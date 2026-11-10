@@ -1,16 +1,20 @@
-DafeiyuPet 大肥鱼桌宠
+DafeiyuPet (Big Fat Fish Desktop Pet)
 Copyright (c) 2026 Dudu Studio. All Rights Reserved.
 
-本源码仓库仅供学习与交流查看，未授予任何修改后二次分发的许可。
+This source repository is provided for study and reference only.
+No license to modify or redistribute is granted.
 
-1. 代码部分：保留所有权利（All Rights Reserved）。未经开发者书面许可，
-   不得复制、修改、再分发或用于商业用途。
+1. Code: All rights reserved. You may not copy, modify, redistribute or
+   use this code for commercial purposes without prior written permission
+   from the developer (Dudu Studio).
 
-2. 素材部分：assets/anims/ 下的角色动画素材来自开源项目 dsh-pet
-   （PC2005-cloud/dsh-pet，角色：上善无形 / ZipZipPipe），
-   授权协议为 CC BY-NC-SA 4.0（署名-非商业性使用-相同方式共享）。
-   使用本项目即视为同意遵守该协议，禁止任何商业用途。
+2. Assets: the character animations under assets/anims/ come from the
+   open-source project dsh-pet (PC2005-cloud/dsh-pet; character by
+   上善无形 / ZipZipPipe) and are licensed under CC BY-NC-SA 4.0
+   (Attribution-NonCommercial-ShareAlike). By using this project you agree
+   to comply with that license. Commercial use is strictly prohibited.
 
-3. 本项目与 DeepSeek 官方无关，仅为个人学习用途的仿作。
+3. This project is a fan-made study clone and is not affiliated with
+   DeepSeek.
 
-如需其他授权方式，请联系开发者 Dudu Studio。
+For other licensing options, contact Dudu Studio.

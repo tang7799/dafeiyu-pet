@@ -1,125 +1,127 @@
 <div align="center">
 
-<img src="docs/images/logo.png" width="120" alt="大肥鱼桌宠"/>
+<img src="docs/images/logo.png" width="120" alt="Dafeiyu Pet"/>
 
-# 大肥鱼桌宠 (DafeiyuPet)
+# Dafeiyu Pet (大肥鱼桌宠)
 
-一条吃白饭的蓝色鲸鱼娘，住在你的 Windows 桌面上。
+A chubby blue whale-girl who lives on your Windows desktop and eats rice.
 
-`v1.1.7` · Electron 45 · Windows x64 · 开发者 **Dudu Studio**
+`v1.1.7` · Electron 45 · Windows x64 · Developer **Dudu Studio**
+
+> 🇨🇳 中文文档：[AtomGit mirror](https://atomgit.com/jettyjoy/dafeiyu-pet)
 
 </div>
 
 ---
 
-一条仿 DeepSeek 大肥鱼（dsh-pet）风格的桌面宠物：透明置顶窗口 + 官方风格 Q 版鲸鱼娘动画，会游走、睡觉、摸鱼、被你拖来抛去；接上 AI 之后，她还能**陪你聊天、帮你操作电脑、去 B 站看视频做总结，甚至自己上网冲浪**。
+A DeepSeek "Big Fat Fish" (dsh-pet) style desktop pet: a transparent always-on-top window with an official-style chibi whale-girl driven by webm animations. She strolls around, sleeps, slacks off, and lets you drag and toss her around. Hook her up to AI and she can also **chat with you, operate your computer, watch Bilibili videos and summarize them, and even surf the web on her own**.
 
 <div align="center">
 <table>
 <tr>
-<td align="center"><img src="docs/images/pet.png" width="220" alt="桌宠"/><br/><sub>桌宠本鱼（Q 版鲸鱼娘，webm 动画驱动）</sub></td>
-<td align="center"><img src="docs/images/chat.png" width="220" alt="聊天窗口"/><br/><sub>AI 聊天窗口（流式回复）</sub></td>
+<td align="center"><img src="docs/images/pet.png" width="220" alt="Desktop pet"/><br/><sub>The pet herself (chibi whale-girl, webm-driven)</sub></td>
+<td align="center"><img src="docs/images/chat.png" width="220" alt="Chat window"/><br/><sub>AI chat window (streaming replies)</sub></td>
 </tr>
 </table>
 </div>
 
-## ✨ 功能一览
+## ✨ Features
 
-### 🐟 桌宠本体
-- **状态机动画**：待机呼吸、睡觉（入睡→循环→醒来）、思考、工作、完成庆祝、出错、拖拽挣扎、连跳等，全部使用官方风格透明 webm 片段，双 video 交叉淡入切换
-- **物理交互**：左键拖拽、松手抛掷（重力 + 弹跳 + 发射）、放大缩小、闲置贴边休息（自动趴上/左/右屏幕边框，移动过程淡出→瞬移→淡入）
-- **右键菜单**：播放动画（25 个官方动作点播）、AI 对话、查看天气、喂食、蹦跶、睡觉、设置子菜单、改名、换色调（经典蓝 / 樱花粉 / 抹茶绿 / 葡萄紫）、开机自启、退出
-- **喂食** 🍚：点一下从窗口顶部落下食物，6 种吃动画随机（白饭 / Token / 零食 / 冰淇淋 / 汤圆 / 火锅），吃完开心转圈
-- **心情系统** ❤️：心情随时间流逝，互动 / 喂食 / 聊天会回血，心情低到一定程度鱼会变得冷漠
-- **番茄钟** 🍅：持续活跃 25 分钟提醒休息，空闲 5~45 分钟摸鱼吐槽（可关）
-- **天气提醒** ☁️：每天早晨首次见面播报天气与带伞建议（wttr.in）
-- **悬浮模式** 🪁：开关后拖到哪里就停在哪里，不触发掉落
-- **碎碎念** 💬：闲置时随机冒气泡说话
+### 🐟 The pet itself
+- **State-machine animations**: idle breathing, sleeping (fall asleep → loop → wake up), thinking, working, celebration, error, drag struggling, hopping and more — all official-style transparent webm clips with cross-fading between two video layers
+- **Physics interaction**: drag & throw (gravity + bouncing + flinging), resize, idle edge-resting (automatically lies down on the top/left/right screen edge, moving with fade-out → teleport → fade-in)
+- **Right-click menu**: play animation (25 official clips on demand), AI chat, weather, feeding, hopping, sleep, settings submenu, rename, color themes (classic blue / sakura pink / matcha green / grape purple), auto-start on boot, exit
+- **Feeding** 🍚: click once and food drops from the top of the window — one of **6 random eating animations** (rice / Token / snacks / ice cream / tangyuan / hotpot), followed by a happy spin
+- **Mood system** ❤️: mood decays over time and is restored by interaction / feeding / chatting; when it gets too low the fish turns cold and distant
+- **Pomodoro** 🍅: reads system idle time every minute — reminds you to rest after 25 minutes of continuous activity, and complains about slacking if you idle for 5–45 minutes (optional)
+- **Weather briefing** ☁️: on first meeting each morning, reports the weather and umbrella advice (wttr.in)
+- **Hover mode** 🪁: toggle it on and the fish stays wherever you drop her, no falling; toggle off to restore gravity
+- **Murmuring** 💬: random speech bubbles while idle
 
-### 💬 AI 聊天窗口
-- 流式回复、说话时嘴巴动、生成中可随时停止、清除对话、本地历史持久化
-- 大肥鱼专属人设（软萌鲸鱼娘，把 Token 叫「白饭」），支持纯口语约束（不输出 Markdown / 表情）
-- 工具调用：聊天中鱼可以调用下方全部「电脑操作」工具，边聊边干
+### 💬 AI chat window
+- Streaming replies, animated mouth while talking, stop mid-generation, clear conversation, local history persistence
+- Dedicated whale-girl persona (soft and cuddly, calls tokens "rice bowls"), natural spoken-style constraints (no Markdown / emojis / role-play brackets)
+- Tool calling: the fish can invoke all the "computer control" tools below while chatting
 
-### 🖥 电脑操作（34 个工具，可在聊天中调用）
-- 鼠标键盘：移动 / 点击 / 滚轮 / 拖拽 / 打字 / 按键
-- 屏幕理解：截屏 + OCR 识屏
-- 浏览器：打开收藏网址、读页面 DOM、点击、输入、滚动、抓取任意 URL
-- 文件与应用：读写文件、目录列表、移动 / 新建、打开应用 / 文件并聚焦窗口
-- B 站全家桶：视频总结（含字幕与画面）、UP 主视频排行、读评论区、发评论（发前弹确认窗人工放行）
-- 定时任务：每天 HH:MM / 每 N 分钟 / 单次提醒或自主任务
-- 长期记忆：`memory_search` / `memory_write`，跨会话记住看过的视频、发过的评论
+### 🖥 Computer control (34 tools, callable from chat)
+- Mouse & keyboard: move / click / scroll / drag / type / key presses
+- Screen understanding: screenshots + OCR
+- Browser: open bookmarked URLs, read page DOM, click, type, scroll, fetch any URL
+- Files & apps: read/write files, list directories, move/create, open apps or files and focus their windows
+- Bilibili suite: video summaries (with subtitles & frames), uploader video rankings, read comments, post comments (with a confirmation dialog before publishing — always human-approved)
+- Scheduled tasks: daily HH:MM / every N minutes / one-shot reminders or autonomous tasks
+- Long-term memory: `memory_search` / `memory_write` — remembers watched videos and posted comments across sessions
 
-### 🌊 自主冲浪（v1.1.7 新增）
-给鱼开一个「自主冲浪」开关，她就会按你设的间隔自己去 B 站逛街：
-- **先翻记忆**：只看没看过的视频、不重复发评论
-- **节奏自调**：内容有趣自动加密巡逻，无聊自动拉长间隔；深夜 23:00~07:00 自动休息
-- **代码级护栏**：每日最多 24 轮；评论默认禁用（需明确授权），单日 ≤3 条、间隔 ≥15 分钟、同视频仅 1 条，且每条都弹确认窗等你点发布
-- **桌宠联动**：冲浪时鱼会在桌面上东张西望、哼歌「看视频中…」、写评论前行屈膝礼
+### 🌊 Autonomous surfing (new in v1.1.7)
+Turn on the "Autonomous Surfing" switch and the fish will browse Bilibili on her own at your chosen interval:
+- **Checks memory first**: only watches videos she hasn't seen, never double-posts a comment
+- **Self-adjusting pace**: patrols more frequently when content is fun, stretches the interval when bored; automatically rests between 23:00 and 07:00
+- **Hard-coded guardrails** (not left to the model's self-discipline): max 24 rounds per day; comments disabled by default (require explicit authorization), even when enabled: 1 comment per video, ≤3 per day, ≥15 minutes apart, and every comment pops a confirmation dialog for you to approve
+- **Desktop-pet reactions**: while surfing she glances around, hums "watching a video…", curtsies before writing a comment, and stretches when the round ends
 
-### 🔗 WorkBuddy 联动
-- 搭配 WorkBuddy 技能（`dfy_state.py`），Agent 干活时鱼会实时切换 思考 / 工作 / 完成 / 出错 动画，干完活雀跃庆祝
+### 🔗 WorkBuddy integration
+- With the companion WorkBuddy skill (`dfy_state.py`), the pet switches to thinking / working / done / error animations in real time while an agent works, and celebrates when the job is done
 
-## 📦 安装
+## 📦 Installation
 
-1. 到 [Releases · v1.1.7](https://github.com/tang7799/dafeiyu-pet/releases/tag/v1.1.7) 下载 **`DafeiyuPet-Clean-Setup-1.1.7.exe`**（干净版安装包，约 132MB）
-   - 直链：[releases/download/v1.1.7/DafeiyuPet-Clean-Setup-1.1.7.exe](https://github.com/tang7799/dafeiyu-pet/releases/download/v1.1.7/DafeiyuPet-Clean-Setup-1.1.7.exe)
-   - 备用：AtomGit 镜像仓库 [jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet)
-2. 双击安装（NSIS 向导，可选安装目录，默认写入开机自启，可在桌宠设置里关闭）
-3. 启动后右键桌面上出现的鱼即可开始玩耍
+1. Download **`DafeiyuPet-Clean-Setup-1.1.7.exe`** (~132 MB) from [Releases · v1.1.7](https://github.com/tang7799/dafeiyu-pet/releases/tag/v1.1.7)
+   - Direct link: [releases/download/v1.1.7/DafeiyuPet-Clean-Setup-1.1.7.exe](https://github.com/tang7799/dafeiyu-pet/releases/download/v1.1.7/DafeiyuPet-Clean-Setup-1.1.7.exe)
+   - Mirror: [AtomGit jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet)
+2. Run the NSIS installer (choose the install directory; auto-start on boot is enabled by default and can be turned off in the pet's settings)
+3. Launch it and right-click the fish that appears on your desktop
 
-> **干净版 vs 内置版**：干净版不含任何云服务账号配置，聊天 / 冲浪前需要在聊天窗右上角 ⚙ 填入自己的服务地址与公钥；内置版是开发者自用配置，不对外分发。
-> 系统要求：Windows 10 / 11 x64。安装包 sha256：`eaeee1e4ca17bdd37a2d5c7898ea2bc40497cdfe8b1b0eb5645eba14fdf41102`
+> **Clean vs bundled build**: the clean build ships without any cloud account configuration — before chatting / surfing you need to fill in your own service address and public key via the ⚙ button in the chat window. The bundled build contains the developer's own configuration and is not distributed.
+> Requirements: Windows 10 / 11 x64. Installer sha256: `eaeee1e4ca17bdd37a2d5c7898ea2bc40497cdfe8b1b0eb5645eba14fdf41102`
 
-## 🛠 本地开发
+## 🛠 Local development
 
 ```bash
 cd desktop/electron
 npm install          # Electron 45 + electron-builder 24
-npm start            # 直接跑桌宠
-npm run dist         # 打内置版安装包
-npm run dist:clean   # 打干净版安装包（自动扫泄漏、还原源码）
+npm start            # run the pet directly
+npm run dist         # build the bundled installer
+npm run dist:clean   # build the clean installer (leak scan + source restore)
 ```
 
-功能验证脚本（CDP 端到端断言，支持传打包目录验证成品）：
+End-to-end verification scripts (CDP assertions; pass a packaged directory to test the built artifact):
 
 ```bash
-node build/_verify_menu.js       # 菜单定位/扩窗（16 项）
-node build/_verify_v114.js       # 喂食/番茄钟/心情/天气（27 项）
-node build/_verify_v115.js       # 悬浮模式（11 项）
-node build/_verify_surf.js       # 自主冲浪（25 项）
-node build/_verify_surf_unit.js  # 冲浪单元测试（19 项）
-node build/verify-clean.js       # 干净版泄漏自检
+node build/_verify_menu.js       # menu positioning / window expansion (16 checks)
+node build/_verify_v114.js       # feeding / pomodoro / mood / weather (27 checks)
+node build/_verify_v115.js       # hover mode (11 checks)
+node build/_verify_surf.js       # autonomous surfing (25 checks)
+node build/_verify_surf_unit.js  # surfing unit tests (19 checks)
+node build/verify-clean.js       # clean-build leak audit
 ```
 
-### 目录结构
+### Repository layout
 
 ```
 desktop/electron/
-├── main.js        # 主进程：窗口、IPC、定时任务分发、系统空闲时间
-├── pet.html       # 桌宠渲染层：状态机、物理、菜单、动画调度
-├── chat.html      # 聊天窗渲染层：流式对话、工具循环、冲浪提示词
-├── preload.js     # contextBridge 桥接
-├── pc.js          # 34 个电脑操作工具注册表 + 定时任务引擎
-├── surf.js        # 自主冲浪：记忆文件、风控计数、轮次状态
-├── bili.js        # B 站：扫码登录、视频/评论/排行
-├── video.js       # 视频总结（字幕 + 画面）
-├── browser.js     # DOM 级浏览器自动化
-├── office.js / pdf.js / ocr_win.ps1  # 本地内容处理
-├── assets/anims/  # 37 个官方风格 webm 动画片段
-└── build/         # 打包脚本 + 全套验证脚本
+├── main.js        # main process: windows, IPC, task dispatch, system idle time
+├── pet.html       # pet renderer: state machine, physics, menus, animation scheduling
+├── chat.html      # chat renderer: streaming conversation, tool loop, surfing prompt
+├── preload.js     # contextBridge bridge
+├── pc.js          # registry of 34 computer-control tools + scheduled-task engine
+├── surf.js        # autonomous surfing: memory files, risk-control counters, round state
+├── bili.js        # Bilibili: QR login, videos / comments / rankings
+├── video.js       # video summaries (subtitles + frames)
+├── browser.js     # DOM-level browser automation
+├── office.js / pdf.js / ocr_win.ps1  # local content processing
+├── assets/anims/  # 37 official-style webm animation clips
+└── build/         # packaging scripts + full verification suite
 ```
 
-## 📜 更新日志
+## 📜 Changelog
 
-见 [CHANGELOG.md](CHANGELOG.md)。国内镜像：[AtomGit jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet)（v1.0.0 → v1.1.7 完整记录）。
+See [CHANGELOG.md](CHANGELOG.md) (complete history from v1.0.0 to v1.1.7). Chinese docs mirror: [AtomGit jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet).
 
-## ⚠️ 说明与致谢
+## ⚠️ Notes & credits
 
-- 角色形象与动画素材来自开源项目 **dsh-pet**（PC2005-cloud/dsh-pet），角色：上善无形 / ZipZipPipe，授权 **CC BY-NC-SA 4.0**（禁止商用），详见 [assets/CREDITS.md](desktop/electron/assets/CREDITS.md)
-- 本项目为个人学习用途的仿作，与 DeepSeek 官方无关
-- 自主冲浪会持续消耗所配置大模型服务的 Token，请按需开关
-- 请遵守 B 站社区规范：评论默认禁用、逐条人工放行的设计不可绕过
+- The character and animation assets come from the open-source project **dsh-pet** (PC2005-cloud/dsh-pet, character by 上善无形 / ZipZipPipe), licensed under **CC BY-NC-SA 4.0** (non-commercial), see [assets/CREDITS.md](desktop/electron/assets/CREDITS.md)
+- This project is a fan-made study clone and is not affiliated with DeepSeek
+- Autonomous surfing continuously consumes tokens from whatever LLM service you configure — toggle it off when you don't need it
+- Please follow the Bilibili community rules: the comments-disabled-by-default, human-approved-per-comment design must not be bypassed
 
 ## License
 
