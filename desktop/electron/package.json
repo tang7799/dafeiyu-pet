@@ -1,0 +1,61 @@
+{
+  "name": "dafeiyu-desktop-pet",
+  "version": "1.1.7",
+  "description": "大肥鱼桌宠 · Windows 桌面宠物（Electron 透明置顶窗口）",
+  "author": "Dudu Studio",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "dist:clean": "node build/build-clean.js"
+  },
+  "build": {
+    "appId": "com.dafeiyu.desktop-pet",
+    "productName": "DafeiyuPet",
+    "copyright": "Copyright © 2026 Dudu Studio. All rights reserved.",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "files": [
+      "**/*",
+      "!*_preview.png",
+      "!probe.png",
+      "!probe.html",
+      "!probe.js",
+      "!fetch_anims.py",
+      "!build/**/*",
+      "!dist*/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "legalTrademarks": "大肥鱼桌宠 · Dudu Studio"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "大肥鱼桌宠",
+      "uninstallDisplayName": "大肥鱼桌宠",
+      "runAfterFinish": true,
+      "include": "build/installer.nsh",
+      "artifactName": "DafeiyuPet-Setup-${version}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6"
+  }
+}

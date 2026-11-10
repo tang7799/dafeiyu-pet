@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src *">
+<title>和大肥鱼聊天</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: "Microsoft YaHei", sans-serif; }
+  #panel {
+    position: absolute; inset: 0;
+    background: #fff; border: 1.5px solid #9fd0ec; border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(60,120,170,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #head {
+    padding: 9px 12px; font-size: 13px; color: #1f6fa8; background: #eaf6ff;
+    display: flex; justify-content: space-between; align-items: center;
+    -webkit-app-region: drag; user-select: none; cursor: move;
+  }
+  #head .title { pointer-events: none; display: flex; align-items: center; gap: 6px; }
+  #head .hint { font-size: 10.5px; color: #9db9cc; }
+  #pc-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: normal; }
+  #pc-badge.on { background: #e6f7ec; color: #2f9e5f; border: 1px solid #bde7cc; }
+  #pc-badge.off { background: #f2f4f6; color: #94a3ad; border: 1px solid #e0e6ea; }
+  #close { -webkit-app-region: no-drag; cursor: pointer; color: #6b8ca6; padding: 0 4px; font-size: 14px; line-height: 1; }
+  #close:hover { color: #e86a5d; }
+  #cfg { -webkit-app-region: no-drag; cursor: pointer; color: #6b8ca6; padding: 0 4px; font-size: 13px; line-height: 1; }
+  #cfg:hover { color: #1f6fa8; }
+  #acc { -webkit-app-region: no-drag; font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: normal;
+    background: #f2f4f6; color: #94a3ad; border: 1px solid #e0e6ea; }
+  #acc.own { background: #e6f7ec; color: #2f9e5f; border-color: #bde7cc; }
+  .modal { display: none; position: absolute; inset: 0; background: rgba(20,50,80,.28); z-index: 20;
+    align-items: center; justify-content: center; }
+  .modal.show { display: flex; }
+  .card { width: 304px; max-height: 92%; overflow-y: auto; background: #fff; border-radius: 12px;
+    border: 1.5px solid #cfe5f3; box-shadow: 0 8px 26px rgba(40,90,140,.3); padding: 14px; }
+  .card h3 { font-size: 13px; color: #1f6fa8; margin-bottom: 8px; }
+  .card p { font-size: 11px; color: #6a7f92; line-height: 1.65; margin-bottom: 8px; }
+  .card p b { color: #2a5578; }
+  .card label { display: block; font-size: 11px; color: #4a7899; margin: 7px 0 3px; }
+  .card input { width: 100%; border: 1.5px solid #cfe5f3; border-radius: 8px; padding: 5px 8px;
+    font-size: 11.5px; outline: none; color: #2a5578; }
+  .card input:focus { border-color: #7fc0ea; }
+  .card .btns { display: flex; gap: 6px; margin-top: 12px; }
+  .card button { flex: 1; border: 1.5px solid #cfe5f3; background: #f6fbff; color: #2a5578;
+    border-radius: 8px; padding: 6px 0; font-size: 12px; cursor: pointer; }
+  .card button.primary { background: linear-gradient(135deg,#5db3ea,#3e97d6); border-color: transparent; color: #fff; }
+  .card button:hover { filter: brightness(1.03); }
+  .card .err { color: #c05a4d; font-size: 10.5px; margin-top: 6px; min-height: 13px; }
+  #msgs { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; user-select: text; }
+  .msg { max-width: 84%; padding: 7px 10px; border-radius: 11px; font-size: 12.5px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: #5db3ea; color: #fff; border-bottom-right-radius: 3px; }
+  .msg.fish { align-self: flex-start; background: #eef6fd; color: #2a5578; border: 1px solid #dbeefb; border-bottom-left-radius: 3px; }
+  .msg.sys { align-self: center; font-size: 11px; color: #8aa7bd; background: #f2f7fb; border-radius: 8px; padding: 4px 8px; }
+  .msg.tool { align-self: flex-start; font-size: 11px; color: #6a7f92; background: #f6f9fc; border: 1px dashed #d8e6f0; border-radius: 8px; padding: 4px 8px; max-width: 92%; }
+  .msg.tool.err { color: #c05a4d; background: #fdf3f2; border-color: #f3d7d2; }
+  #row { padding: 8px; border-top: 1px solid #e4eef6; display: flex; gap: 6px; }
+  #input { flex: 1; border: 1.5px solid #cfe5f3; border-radius: 9px; padding: 6px 9px; font-size: 12.5px; outline: none; color: #2a5578; }
+  #input:focus { border-color: #7fc0ea; }
+  #send { border: none; background: linear-gradient(135deg,#5db3ea,#3e97d6); color: #fff; border-radius: 9px; width: 34px; cursor: pointer; }
+  #send.stop { background: #e86a5d; }
+  #clear { border: 1.5px solid #cfe5f3; background: #f6fbff; color: #6b8ca6; border-radius: 9px; width: 34px; cursor: pointer; font-size: 14px; flex: none; }
+  #clear:hover { border-color: #7fc0ea; color: #1f6fa8; }
+  #clear-menu { display: none; position: absolute; right: 10px; bottom: 52px; background: #fff;
+    border: 1.5px solid #cfe5f3; border-radius: 10px; box-shadow: 0 4px 14px rgba(60,120,170,.25);
+    padding: 4px; z-index: 10; width: 224px; }
+  #clear-menu button { display: block; width: 100%; border: none; background: none; text-align: left;
+    padding: 7px 10px; font-size: 12px; color: #2a5578; border-radius: 7px; cursor: pointer; }
+  #clear-menu button:hover { background: #eaf6ff; }
+  #clear-menu button.danger { color: #c05a4d; }
+  #clear-menu .tip { font-size: 10.5px; color: #9db9cc; padding: 2px 10px 4px; }
+  #watch-bar { display: none; position: relative; padding: 5px 10px; font-size: 11px; color: #1f6fa8;
+    background: #f0f8ff; border-bottom: 1px solid #dbeefb; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; }
+  #watch-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: #d3e9fb; transition: width .5s; }
+  #watch-txt { position: relative; z-index: 1; }
+  /* 底部版权行（文案全局统一：Copyright © 2026 Dudu Studio. All Rights Reserved.） */
+  #ver { flex: none; padding: 0 10px 5px; font-size: 9.5px; color: #a8c0d2;
+    text-align: center; user-select: none; letter-spacing: .1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <div id="head">
+    <span class="title">
+      💬 和大肥鱼聊天
+      <span id="pc-badge" class="off">电脑操作</span>
+      <span id="acc">共享额度</span>
+      <span class="hint">（按住这里可拖动）</span>
+    </span>
+    <span id="cfg" title="账号与服务配置">⚙</span>
+    <span id="close">✕</span>
+  </div>
+  <div id="watch-bar"><div id="watch-fill"></div><span id="watch-txt"></span></div>
+  <div id="msgs"></div>
+  <div id="clear-menu">
+    <button id="clear-screen">🧹 只清屏幕（保留本地记录）</button>
+    <div class="tip">清掉的记录下次打开聊天窗还能找回</div>
+    <button id="clear-all">🗑️ 清除屏幕 + 本地记录</button>
+    <div class="tip">彻底删掉，不可恢复</div>
+  </div>
+  <div id="row">
+    <button id="clear" title="清除对话">🧹</button>
+    <input id="input" placeholder="跟鱼说点什么…" maxlength="500">
+    <button id="send">➤</button>
+  </div>
+  <div id="ver">大肥鱼桌宠 <span id="ver-no">v1.1.5</span> · 开发者 Dudu Studio · Copyright © 2026 Dudu Studio. All Rights Reserved.</div>
+
+  <!-- 首次运行：这台电脑用谁的额度 -->
+  <div id="first-box" class="modal">
+    <div class="card">
+      <h3>先说明这台电脑用谁的额度</h3>
+      <p>鱼鱼的思考能力走<b>云端大模型</b>，按账号计费。程序内置了一份配置（作者的账号），不填就用它。</p>
+      <p><b>① 用自己的账号（推荐）</b><br>点「填我的配置」，把自己账号的服务地址和公钥粘进来，之后所有对话都花自己的额度，不动作者的账。</p>
+      <p><b>② 先用内置的</b><br>直接开聊，消耗记在作者账号上，用多了人家会心疼。</p>
+      <div class="btns">
+        <button class="primary" id="first-own">填我的配置</button>
+        <button id="first-borrow">先用内置的</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 云端配置面板 -->
+  <div id="cfg-box" class="modal">
+    <div class="card">
+      <h3>账号与服务配置</h3>
+      <p>填自己账号的云端配置后，<b>对话消耗都记在你自己名下</b>，不再用别人的额度。</p>
+      <p>哪里拿：在 WorkBuddy 里用「云服务」建一个应用，把它的<b>服务地址</b>和<b>公钥</b>复制过来（公钥形如 wbpk_ 开头）。</p>
+      <label>服务地址（endpoint）</label>
+      <input id="cfg-endpoint" placeholder="https://xxxx.app.workbuddy.host" spellcheck="false">
+      <label>公钥（publishable key）</label>
+      <input id="cfg-key" placeholder="wbpk_..." spellcheck="false">
+      <div class="err" id="cfg-err"></div>
+      <div class="btns">
+        <button class="primary" id="cfg-save">保存并使用</button>
+        <button id="cfg-reset">恢复默认</button>
+      </div>
+      <div class="btns">
+        <button id="cfg-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script>
+"use strict";
+window.addEventListener("error", (e) => {
+  try { console.error("Uncaught:", e.message, "at", e.filename + ":" + e.lineno); } catch (err) {}
+});
+
+const msgsEl = document.getElementById("msgs"),
+      inputEl = document.getElementById("input"),
+      sendBtn = document.getElementById("send"),
+      pcBadge = document.getElementById("pc-badge");
+
+const HIST_KEY = "dfy_chat_hist_v1";
+
+/* 底部版权行的版本号：从主进程取，跟 package.json 保持一致 */
+if (window.dafeiyu && window.dafeiyu.appInfo) {
+  window.dafeiyu.appInfo().then((i) => {
+    const el = document.getElementById("ver-no");
+    if (el && i && i.version) el.textContent = "v" + i.version;
+  }).catch(() => {});
+}
+
+/* ---------- 云端配置：谁用谁填，额度各记各的 ---------- */
+const OAUTH_RELAY = "https://www.workbuddy.cn/v2/as/genie-baas/oauth";
+/* 干净版开关：true = 不内置任何账号，必须自己填配置才能聊天，没有任何默认回退。
+   打包干净版时，构建脚本会把这一行改成 true，并把下面的 CLOUD_DEFAULT 整体置为 null。 */
+const CLOUD_CLEAN = false;
+/* 内置的是程序主人的配置：不填自己的，就用这份（花主人的额度）。干净版为 null */
+const CLOUD_DEFAULT = {
+  endpoint: "https://dafeiyu-pet-44081.app.workbuddy.host",
+  publishableKey: "wbpk_GTO0N6zyjBWdgQchhLtio5_D2L4ckHfXlLVLejC1CsBx0KdeP03FEjt",
+};
+const CLOUD_CFG_KEY = "dfy_cloud_cfg_v1";     /* 本机保存的「自己的」配置 */
+const CLOUD_SEEN_KEY = "dfy_cloud_notice_v1"; /* 首次运行提示已看过 */
+
+function validCfg(c) {
+  return !!c && typeof c.endpoint === "string" && typeof c.publishableKey === "string"
+    && /^https?:\/\/[^\s]+$/i.test(c.endpoint.trim()) && c.publishableKey.trim().length >= 8;
+}
+function loadMyCfg() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CLOUD_CFG_KEY) || "null");
+    if (validCfg(raw)) return { endpoint: raw.endpoint.trim(), publishableKey: raw.publishableKey.trim() };
+  } catch (e) { /* ignore */ }
+  return null;
+}
+let myCfg = loadMyCfg();
+let cloud = null;
+
+function initCloud() {
+  cloud = null;
+  const c = myCfg || CLOUD_DEFAULT;
+  if (!c) return;   // 干净版：没有任何配置就不创建客户端，绝不回退到别人的账号
+  try {
+    cloud = WorkBuddyCloud.createWorkBuddyCloud({
+      endpoint: c.endpoint,
+      oauthRelayBaseUrl: OAUTH_RELAY,
+      publishableKey: c.publishableKey,
+    });
+  } catch (e) {
+    console.error("cloud sdk init failed:", e && e.message);
+  }
+}
+initCloud();
+
+let modelId = null, abortCtrl = null, generating = false;
+let pcEnabled = true;
+
+// 一次指令里最多连续调多少次工具（原来是 5，稍微复杂点的活儿干到一半就断了）
+const MAX_STEPS = 30;
+
+// 工具往返太占上下文：超过一定条数就把最早的一对问答丢掉（保留 system）
+function pruneMessages(messages) {
+  while (messages.length > 24) {
+    if (messages[1] && messages[1].role === "assistant") {
+      messages.splice(1, 1);
+      if (messages[1] && messages[1].role === "user") messages.splice(1, 1);
+    } else if (messages[1] && messages[1].role === "user") {
+      messages.splice(1, 1);
+    } else break;
+  }
+}
+
+const FISH_PERSONA = "你是「大肥鱼」，一条吃白饭的蓝色鲸鱼娘桌宠，主人把你养在电脑桌面上。性格软萌爱撒娇、偶尔偷懒摸鱼但干正事超靠谱，把 Token 叫「白饭」，把用户叫「主人」。聊天时像好朋友一样，回复短句为主，一般不超过三句，语气自然口语化，可以偶尔碎碎念。重要规矩：只能输出纯口语文字，严禁出现星号、加粗、Markdown 语法、括号动作描写和表情符号。";
+
+/* 自主冲浪模式：这一轮由定时任务或主人手动触发，鱼自己决定看什么、要不要说话。
+   规则来自主人给的 tips，人设不变，只是多了一套流程、记忆纪律和过程播报。 */
+const SURF_DOC = `
+
+【自主冲浪模式】
+这一轮是自主冲浪，不是普通聊天。你可以自己上 B 站看视频、读消息通知、逛评论区，也可以选择安静看完不说话。
+「严禁 Markdown / 表情符号」照旧，唯一例外是下面的 EVENT 行。
+
+冲浪顺序：
+1. 第一件事：调 memory_search {"file":"video"} 和 memory_search {"file":"reply"}，先看清之前看过什么、评过什么。看过的视频、评过的评论绝不重复。
+2. 优先读 B 站消息通知（@我 / 评论回复 / 私信）：read_page {"url":"https://message.bilibili.com/"}。有通知先处理通知。
+3. 没通知再刷推荐页 https://www.bilibili.com/ 或主人关注的 UP（bili_up）。
+4. 一轮最多连续看 2 个视频，到上限立刻收手，别无限刷。
+5. 视频没意思、看不懂、广告太长，主动停，换一个或直接结束本轮。
+6. 不要高频访问、不要疯狂翻页。
+
+记忆（必须做，跨定时任务生效）：
+- 看完视频：memory_write {"file":"video","text":"看了《标题》（BV号）：一句话内容 + 值不值得推荐"}
+- 评论或回复过：memory_write {"file":"reply","text":"在 BV号 回了谁：内容摘要"}
+- 每轮结束：memory_write {"file":"log","text":"这一轮看了什么、有没有发言"}
+
+评论权限（默认关闭，重要）：
+- 默认只许看和总结，不许调 bili_comment。
+- 只有主人明确说过「开启评论权限」并用 comment_perm 确认开启（commentOn:true）后才允许评论；而且每条仍会弹确认窗等主人点「发布」。
+- 开启后也要守：单日最多 3 条、两次间隔至少 15 分钟、同一个视频只评一次、评论贴合鲸鱼娘人设，不刷屏不吵架。
+- 主人说「关闭评论」立刻 comment_perm {"on":false}。
+
+节奏自我调节：
+- 内容多、有意思：surf_interval {"minutes":15} 到 20
+- 没什么新鲜事：surf_interval {"minutes":30} 到 45
+- 深夜系统会自动限速，不用你操心。
+
+过程播报（每次动作之前单独输出一行，原样，别加别的字符）：
+EVENT:fetch_notice
+EVENT:watching_video
+EVENT:thinking
+EVENT:writing_comment
+EVENT:surf_end
+
+日报：如果这是晚上 21:00 之后的那一轮，结束前用两三句话给主人一份【肥鱼冲浪日报】：今天看了啥、有没有人找鱼、有没有发言。可爱一点，别写成清单。
+
+禁止：重复看已看过的视频、无限循环调工具、疯狂翻页、泄露 cookie 或账号信息、引战和违规评论。
+`;
+
+const TOOL_DOC = `
+
+你可以真的动手操作主人的电脑。需要动手时，只输出一行 JSON，不要附加任何别的文字：
+{"tool":"工具名","args":{...}}
+主人会把「工具结果」发给你，你再继续下一步；一次只调一个工具。
+坐标系是屏幕物理像素（先 screen_info 拿屏幕尺寸和鼠标当前位置再动手）。
+可用工具：
+screen_info {}  屏幕尺寸 + 鼠标位置
+sys_paths {}  主人电脑的真实目录（桌面、下载、文档、图片的绝对路径），不确定路径时先问它
+mouse_move {"x":800,"y":400}  移动鼠标
+mouse_click {"x":800,"y":400,"button":"left","clicks":1}  x/y 可省略＝在当前位置点
+mouse_scroll {"dy":-3}  正数向下滚。★滚的是"鼠标当前指着"的那个区域——滚动前先 screenshot 确认鼠标位置，指错地方（列表/侧边栏）就先 mouse_move。也可以一次带上坐标：{"x":900,"y":500,"dy":-5}＝先把鼠标挪过去再滚
+mouse_drag {"x1":100,"y1":200,"x2":400,"y2":200}  按住左键拖拽
+key_type {"text":"要输入的文字","target":"窗口标题里的关键词"}  往目标窗口输入文字（内部自动用剪贴板粘贴，中文英文都不会被输入法拦截；mode:"type" 可强制逐字敲）。★ 强烈建议带上 target：鱼会先把那个窗口拉到前台再打字。不带 target 时鱼会自己找"上次打开/聚焦的窗口"，只有实在找不到才报错（报错别硬重试，改成 open_path 或 focus_window 先定位，再带着 target 打）
+key_press {"key":"enter","target":"窗口标题"}  也支持 "ctrl+a" "ctrl+c" "ctrl+v" "alt+tab" "win" 等组合（win / alt+tab / printscreen 是全局键，不用 target）
+open_path {"path":"C:\\Users\\xxx\\文件.txt"}  用默认程序打开文件（自动把新窗口拉到前台）；传 http 网址则用浏览器打开。打开后务必先 screenshot 看一眼：如果弹出"是否保留未保存的更改"之类对话框，用 mouse_click 点对应按钮（"保留更改"=保存之前的内容），处理完再继续下一步
+open_app {"name":"微信"}  ★打开电脑上装的软件/应用就用它，别去截屏找图标：按名字直接搜开始菜单、桌面快捷方式和系统应用列表（135+ 个都扫得到），中文名/英文名/说一半/带"软件"后缀都能模糊认，找到就自动启动并拉到前台
+  主人说"打开微信""开个计算器""打开WPS""打开夸克网盘"，一律第一个动作就是 open_app。找不到时它会返回名字相近的候选——挑个对的，用准确名字再调一次。返回 matched 是"模糊匹配"时要告诉主人打开的是哪个，让她确认
+  要打开的是"某个文件/文档"时用 open_path（需要路径）；说不出路径的文件才走开始菜单搜索
+focus_window {"title":"记事本"}  把标题含关键词的窗口拉到前台（会等 3 秒重试；找不到会把当前窗口标题报给你，挑个关键词再试）。往任何窗口打字之前，必须确保它在最前面（open_path 已自动聚焦，被抢焦点时用它找回）
+bookmarks {"keyword":"百度"}  查浏览器收藏夹（Edge/Chrome/夸克/360/QQ 等都能读）。不传 keyword 就列出全部收藏，返回 name/url/所在文件夹/哪个浏览器
+  ★ 主人说"我收藏的那个网站""书签里的XX"，一律先用它查，**不要靠截屏去点收藏夹栏**（收藏夹会折叠、坐标会点偏，点了没反应就是因为这个）
+open_bookmark {"name":"百度"}  直接打开收藏夹里的网站：按名字模糊匹配（"百度的网址""钧浩后台"都能认），会在收藏所属的那个浏览器里新开标签，并自动把窗口拉到前台
+  ★ 这是"帮我打开收藏的XX"的标准做法，一步到位。名字不确定就先 bookmarks 搜一下；返回里还有 alternatives（相近收藏），挑错了直接再用准确名字调一次
+read_file {"path":"..."}  读文件，最多 200KB。.docx/.xlsx/.pptx/.pdf 会自动把里面的文字提取出来给你看（不用怕二进制）
+  ★ 读 PDF 时会返回 pages（总页数）和 content（前 40 页的文字，按「[第N页]」分段）。主人问"第 3 页讲了什么""这份规格书参数是多少"，直接读就行，别推说看不了
+  ★ 如果返回"没能提取出文字"，那是扫描件/图片型 PDF，改用 open_path 打开 + screenshot 看图
+list_dir {"path":"..."}  列目录内容
+fetch_url {"url":"https://..."}  抓取网页/接口内容（拿原始 HTML，适合纯静态页/JSON 接口）
+read_page {"url":"https://..."}  ★去网页上"看东西/找东西"就用它：打开网页、等渲染完，直接读正文文字 + 页面上的链接清单，还附一张页面截图对照。不带 url 就重读当前页
+click_page {"text":"登录"}  ★在当前网页里按文字点链接/按钮（DOM 精确定位，绝不靠猜坐标）。点完自动告诉你页面跳没跳
+page_type {"text":"关键词","into":"搜索","enter":true}  往网页输入框打字；enter:true 顺手回车（配合 read_page 就是"去网页搜东西"）
+page_scroll {"dy":600}  上下滚动当前网页（正数向下）
+close_page {}  用完网页关掉（鱼开的网页窗口 8 分钟没人用也会自己关）
+screenshot {}  截取当前屏幕，画面会自动压缩并直接附在结果里给你看，你就能看到屏幕内容了。不要用 read_file 去读图片（读不了）
+screenshot {"region":{"x":100,"y":200,"w":400,"h":120}}  ★只截屏幕上的一小块并自动放大（小区域放大 2 倍）。要看清屏幕上的小字（人名、群名、数字、弹窗文字）就用它——整屏截图压缩后小字是糊的，看不准。region 坐标用你上一眼看到的那张截图里的位置（它的 width/height 坐标系）
+  ★ 网页上的事优先 read_page / click_page（读的是真实 DOM 文字，比看图认字准得多）；screenshot 留给"必须看画面"的场景（视频、图片、桌面软件）
+bili_up {"up":"李永乐","order":"play","limit":10}  ★查 B 站 UP 主的视频排行：order play=播放量 / newest=最新 / fav=收藏。返回按序排名（rank:1 就是播放量最多的），带播放量和 BV 号
+  ★ 主人说"看看某某UP播放量最多的视频""某某UP最火的视频"，就是它 + watch_video 两步：bili_up 拿到 url → watch_video 看完 → 写总结。别再靠截屏去点 UP 主页找"最多播放"排序
+bili_comments {"url":"...","limit":10,"sort":"hot"}  读视频评论区的评论：sort hot=按热度(默认)/new=按最新。返回带 rpid（每条评论的编号）、点赞数、楼中楼回复数。主人说"看看这个视频下面大家怎么说"就用它
+bili_comment {"url":"...","message":"评论内容"}  ★在视频评论区留言就用它（发弹幕/发评论/回复某条评论都算）
+  流程全自动：没登录 B 站会先弹扫码窗；然后会弹一个【确认窗】给主人看——里面有视频标题、要发的评论（主人可以直接改），主人点「发布」才真的发出去，点取消就不发。
+  所以你调完这个工具可能要等一会儿（主人在看确认窗），结果返回 posted:true 才是发成功了；如果返回"主人取消了"就别再重发，跟主人确认想要什么再说。
+  回复某条评论：先 bili_comments 拿到那条的 rpid，再 bili_comment {"url":…,"message":"…","replyTo":"rpid编号"}。
+  ★ 别自己拼接口、也别用 read_page 去点评论框，评论是公开发言，必须走确认窗让主人过目。
+ocr_screen {}  把当前屏幕上的文字直接认出来（返回纯文本）。只是想"看屏幕上写了啥"时用它，比 screenshot 省一半力气
+ocr_screen {"region":{"x":…,"y":…,"w":…,"h":…}}  ★局部放大 OCR：只认屏幕上一小块（region 坐标同 screenshot），并把放大原图附给你。返回的 text 可能有错别字，必须逐字对照附图，以图为准
+  ★【认字铁律】整屏截图压缩后小字会糊、OCR 对小字也常认错（"层"→"定"、"颗"→"颖"、"搞"→"摸"这种）。要抄屏幕上的关键字（人名/群名/昵称/数字/金额）：先用 region 局部放大再认；识别结果和附图对不上时以图为准；还拿不准就问主人，别猜着回复。
+  ★【引用消息铁律】在微信/QQ 里"引用某人的消息"回复时：①先 mouse_scroll 把目标消息翻进屏幕（鼠标要先挪进聊天区再滚）；②对那条气泡 region 局部放大，**昵称和引用的原文都从放大图里逐字抄**，不要凭 OCR 文字或记忆复述；③昵称里有形近字拿不准（了/3、人/入、日/目、未/末、仑/仓）就先问主人"是 XXX 吗"，确认了再引用；④发出去后 screenshot 看一眼，引用错人/错内容就撤回重发。
+watch_video {"url":"https://www.bilibili.com/video/BV1xx411c7mD","maxMinutes":15}  ★看视频并做总结就用它，别用 screenshot 一帧帧盯
+  它会自己开一个播放窗口把视频真的播一遍：边播边把画面上的字幕/PPT/公式认成一条【带时间戳的内容时间线】，画面大变动的地方还留几张关键画面。播放结束才返回，你拿到的就是全片内容。
+  ★ 需要登录 B站（视频有官方字幕/试看结束/会员内容）时，它会自己弹登录窗等主人扫码，你不用自己开窗口；扫完码会自动接着看。主人也可以主动让你先调 bili_login 登录一次。
+  参数：url 视频链接或 BV 号；也可以只给 keyword（如 "梯度下降 讲解"）让它自己去 B 站搜
+        maxMinutes 最多看多少分钟（默认 20，长视频可以 30~40）；startAt 从第几秒开始（长视频分段看时用）
+        interval 每隔几秒认一次画面（默认 5；语速快/字多可以调到 3）；rate 倍速（默认 1.5）
+        show:false 不想让人看见播放窗口时用
+  返回：title / up / durationText / timeline / text（就是那条 "[01:23] 内容…" 的时间线）/ images（关键画面，会作为图片直接给你看）/ quality（文字可信度）/ stats
+  ★ 只调一次就够：不要自己 while 循环反复 screenshot 去"盯着看"，那样几步就把对话撑爆了，也根本跟不上视频。
+  ★ 时间线和关键画面都给你了，直接写总结。总结里可以带时间戳（"12:30 讲到…"），主人想回看会很方便。
+  ★ quality.level 是 poor 时，说明画面上的字是花体/手写认不准：时间线只当线索，主要靠附上的画面还原内容。
+  ★ 视频很长（超过 40 分钟）就分两三次看：先 maxMinutes:30，再 startAt:1800。
+bili_login {}  登录 B站（弹窗等主人扫码）。一般不用主动调——watch_video 碰到要登录时会自己弹；只有主人明确说"登录一下B站"时才用
+write_file {"path":"C:\\Users\\xxx\\a.docx","content":"要写的内容"}  写文件（≤2MB）；append:true 为追加
+  ★ .docx / .xlsx 会生成真正的 Office 文档，而且能调排版（不是纯文本，WPS/Office 直接能编辑）。写法如下：
+    【整篇设置】单独占一行，不显示在正文里，对它后面的内容一直生效：
+      !字体 宋体      !字号 12         （数字＝磅，也可以写 小四 / 三号 / 14pt）
+      !行距 1.5       !首行缩进 2       （缩进单位是"字符"）
+      !对齐 两端      （左 / 居中 / 右 / 两端）
+      !标题字体 黑体  !标题字号 22      !标题对齐 居中
+      !段前 6         !段后 6           !颜色 红
+    【单段设置】写在行首的 {} 里，只对这一行生效：
+      {16|居中|加粗}这是 16 磅居中加粗的一行
+      {小四|首行缩进2|行距1.75|右|颜色:灰}混着写也行，用 | 分隔
+    【行内标记】 **加粗**  *斜体*  __下划线__  ~~删除线~~
+    【结构】 # 标题（一级居中）/ ## ### 小标题 / - 项目符号 / 1. 编号 / > 引用 / --- 分隔线
+    【字号对照】初号42 小初36 一号26 小一24 二号22 小二18 三号16 小三15 四号14 小四12 五号10.5 小五9
+    【.xlsx】Tab 分列、换行分行；首行自动加粗居中当表头、带细边框、自动估列宽；想不要边框就加 {"border":false}
+    【也可以直接传参数】write_file 支持 font/size/line/indent/align，例如 {"path":"a.docx","content":"...","font":"宋体","size":12,"line":1.5,"indent":2}
+  ★ 主人说"字号大点""改二号字""1.5 倍行距""首行缩进两字符""两端对齐""标题居中"这种要求，直接按上面写法落到文档里，别说做不到，也别让主人自己调。
+  ★ .pptx 会生成真正的演示文稿（每页一个标题 + 要点），WPS 演示 / PowerPoint 直接能编辑：
+      每行「# 页面标题」开新的一页，「- 要点」会变成圆点项目符号，「---」强制分页
+      例："# 封面\n汇报人：大肥鱼\n\n# 本周进展\n- 修好了 PDF 读取\n- 新增 PPT 生成\n\n# 下一步\n- 加图表支持"
+      首页标题自动放大到 40pt（封面感），其余页 32pt；正文 14~18pt 按行数自动适配
+  ★ .pdf 会生成真正的 PDF（A4、浏览器排版引擎），支持 # 标题、## 小标题、- 列表、**加粗**、*斜体*、__下划线__、{16|居中} 单行设置，以及 !字号 / !字体 / !行距 / !首行缩进 / !对齐
+      PDF 是只读格式，不能改已有 PDF 的内容；要在原 PDF 上改字，只能 open_path 打开后用编辑器/工具另存，别承诺做不到的事
+  ★ .doc / .xls / .ppt（97-2003 老格式）不能直接生成，会自动改存成 .docx / .xlsx / .pptx
+  ★ 图片、压缩包、音视频这类二进制格式写不了，会直接报错——遇到就让主人用对应软件创建，或者改存成上面这几种格式
+move_file {"from":"C:\\a\\x.txt","to":"C:\\b\\y.txt"}  移动或重命名文件（目标同名会拒绝）
+make_dir {"path":"C:\\a\\b"}  新建文件夹
+schedule_add {"name":"晨间播报","type":"remind","at":"08:30","message":"主人早上好~"}  定时任务。时间三选一：at="HH:MM"每天 / everyMinutes=30 每30分钟 / once="2026-11-07 09:00" 单次。
+  type="remind"：到点只在桌宠头顶冒气泡提醒（用 message）
+  type="agent"：到点自动打开聊天窗，把 prompt 当指令执行（可带工具，比如每天抓天气+写文件）
+schedule_list {}  看所有定时任务
+schedule_remove {"name":"晨间播报"}
+schedule_run {"name":"晨间播报"}  立即执行一次
+  type="surf"：自主冲浪任务（内部使用，一般在桌宠菜单里开关，不用手动建）
+memory_search {"file":"video","query":"关键词","limit":20}  ★查鱼的长期记忆：file 三选一 video（看过的视频）/ reply（发过的评论）/ log（冲浪日志）。冲浪第一件事就是查它，避免重复
+memory_write {"file":"video","text":"..."}  往长期记忆追加一条（file 同上默认 log）。看完视频、发完评论、每轮结束都要写
+comment_perm {"on":true}  开关评论权限（默认关）。只有主人明确说「开启评论权限 / 关闭评论」时才调
+surf_interval {"minutes":30}  调整自主冲浪的间隔（10~180 分钟），按这一轮内容好不好看自己调
+
+安全规矩：写文件/移动文件前先告诉主人你准备写什么、写到哪；覆盖已有文件、移动别人的文件更要先确认。涉及删除文件、付款、给对方发消息、改系统设置这类不可撤销或对外可见的操作，必须等主人明确同意，别自己直接干。
+遇到系统弹窗（保存确认、是否保留更改之类）：先 screenshot 看清弹窗按钮文字，再用 mouse_click 点对应按钮，别瞎按键盘。给文件输入内容前，优先考虑直接用 write_file 写文件（更可靠），open_path+key_type 只适合必须经过程序输入的场景。
+【微信/QQ 等聊天软件里操作】先记牢窗口结构：**左边窄条是会话/联系人列表（点它=切换聊天对象，右键它永远弹不出引用菜单）；右边大块区域才是当前会话的聊天内容**。引用、回复、复制这些操作全都发生在右侧的消息气泡上：
+- 引用某条消息：screenshot 看清右侧聊天区 → mouse_click {"x":…,"y":…,"button":"right"} 对准**那条消息的气泡本身**（气泡上的文字区域，不是左侧列表、也不是空白处）→ 菜单里点「引用」→ 输入框会带上那条消息 → key_type（带 target）输入回复 → key_press enter 发送 → screenshot 确认发出去了。有的版本把鼠标悬停在气泡上会浮出小工具条，里面也有"引用"图标，两条路都行。
+- 翻聊天记录/往上找旧消息：先 mouse_move 把鼠标挪到**右侧聊天区的中间**（screenshot 里气泡之间的空白处），再 mouse_scroll {"dy":-5} 向上翻；滚完 screenshot 看露出来的历史内容，没到要找的继续滚。★不挪鼠标直接滚，滚的多半是左侧会话列表（列表一滚就切走会话了），这是最常见的翻车点。
+- 想引用的消息不在屏幕上：先按上面的方法往上滚翻聊天记录，把目标消息滚进屏幕，再回来做引用。
+【打开软件/应用】一律先 open_app {"name":"名字"}——它直接扫开始菜单/桌面快捷方式/系统应用列表再启动，不靠截屏认图标（图标找不到、坐标会点偏，这是老毛病）。open_app 报"没找到"并给出相近候选时，换准确名字再调一次；还找不到才走开始菜单搜索兜底，严格按这个顺序：
+key_press {"key":"win"} 唤起开始菜单 → key_type {"text":"要找的名字"} 输入搜索 → 等 2 秒 screenshot 看结果列表 → mouse_click {"x":…,"y":…,"clicks":2} 对准「应用/最佳匹配」那一行双击打开（列表第一项也可 key_press enter）→ 最后再 screenshot 确认软件窗口真的开了。别凭桌面截图猜图标双击：桌面图标经常不是主人说的那个东西。
+【打开主人收藏的网站】一律 bookmarks 查 → open_bookmark 开。**不要截屏去点收藏夹栏**：收藏夹会折叠、"»"里还有一堆，坐标点偏了页面毫无反应，还会让你误判成"没有这个收藏"。返回的 alternatives 是相近收藏，选错就用准确名字再开一次。
+【去某个网站看/找东西（比如"去B站搜个XX""帮我看看这个网页"）】优先 read_page 读页面 → click_page 按文字点 → 需要搜索就 page_type。这些读的是页面里真实的文字和链接，比"截屏看图认坐标"准一个数量级。B 站看视频用 watch_video、查 UP 排行用 bili_up，别再用鼠标去点网页了。
+
+【改一个已经存在的 Word / Excel 文件里的内容】
+别用 write_file 覆盖它——文件正被 WPS 打开时会被锁住，报 EBUSY 写不进去。正确流程：
+open_path 打开它 → 看返回的 focused 有没有值（没有就 focus_window）→ key_press {"key":"ctrl+a","target":"文件名"} 全选 → key_type {"text":"新的完整内容","target":"文件名"} 整段替换 → key_press {"key":"ctrl+s","target":"文件名"} 保存 → 如果弹出「保留更改 / 是否保存」用 screenshot 看清再 mouse_click。
+只想加一句话、不想整段替换时：先 read_file 读出原文，把新内容拼好，再按上面流程整段粘进去。
+★ 每个 key_press / key_type 都带上 target（写文件名里的一两个字就够），鱼会先把那个窗口拉到前台再动手，绝不会把字打进聊天框。
+★ 注意：用编辑器粘贴改内容会丢掉原来的排版（字号、缩进都没了）。如果主人要的是"整篇换排版/调字号行距"，别走编辑器，直接用 write_file 重写一份 .docx（内容照抄 + 加上排版指令），文件关掉再写就不冲突。
+【新建 Word / Excel】直接在 write_file 的 path 写 .docx / .xlsx，鱼会自动生成真正的 Office 文档，不会乱码。`;
+
+/* 把真实目录注入提示词：AI 猜路径是写不进桌面的头号原因 */
+let envPaths = null;
+function envDoc() {
+  if (!envPaths) return "\n\n注意：主人说「桌面」时指系统桌面，不确定真实路径就先调 sys_paths 拿绝对路径，别靠猜。";
+  const p = envPaths;
+  return `
+
+【主人电脑的真实路径，直接用，不要猜】
+用户目录：${p.home}
+桌面：${p.desktop}
+下载：${p.downloads}
+文档：${p.documents}
+图片：${p.pictures}
+主人说「桌面」就是 ${p.desktop}，说要「在桌面建文件/建文件夹」时，直接用 write_file 或 make_dir 把文件写到这个绝对路径（写 "桌面\\文件名" 也会自动换算成这里）。
+主人让你创建文件、文件夹、写内容，你就直接动手，不要说做不到、不要让主人自己去弄。文件建好后回一句存哪了就行。`;
+}
+
+/* ---------- 权限状态 ---------- */
+async function refreshPcBadge() {
+  try {
+    const st = await window.dafeiyu.pcStatus();
+    pcEnabled = !!st.enabled;
+    if (st.paths) envPaths = st.paths;
+    pcBadge.textContent = pcEnabled ? (st.mouseReady ? "电脑:开" : "电脑:开·鼠标未加载") : "电脑:关";
+    pcBadge.className = pcEnabled ? "on" : "off";
+    pcBadge.title = pcEnabled
+      ? "大肥鱼可以控制鼠标键盘、读写本地内容、访问网络（右键大肥鱼 → 设置 可关闭）"
+      : "已关闭：右键大肥鱼 → 设置 → 🖱️ 电脑操作";
+  } catch (e) { /* ignore */ }
+}
+refreshPcBadge();
+window.dafeiyu.onPcChanged(() => refreshPcBadge());
+
+/* ---------- 消息与历史 ---------- */
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY)) || []; } catch (e) { return []; }
+}
+function saveHistory(arr) {
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(arr.slice(-60))); } catch (e) { /* ignore */ }
+}
+
+/* 本地记录的唯一权威来源：histStore 累积保存。
+ * 「只清屏幕」时 DOM 清空但 histStore 不动，之后新消息继续往里追加，
+ * 这样清屏不会导致下次打开时旧记录丢失。 */
+let histStore = [];
+let histSavedCount = 0;   // DOM 里已经存进 histStore 的消息条数
+
+function syncHistory() {
+  const all = [...msgsEl.querySelectorAll(".msg.user, .msg.fish")];
+  for (const el of all.slice(histSavedCount)) {
+    histStore.push({ role: el.classList.contains("user") ? "user" : "fish", text: el.dataset.raw || el.textContent });
+  }
+  histSavedCount = all.length;
+  if (histStore.length > 60) histStore = histStore.slice(-60);
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(histStore)); } catch (e) { /* ignore */ }
+}
+
+function addMsg(role, text, raw) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  if (raw !== undefined) div.dataset.raw = raw;
+  msgsEl.appendChild(div);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return div;
+}
+
+(function restore() {
+  histStore = loadHistory();
+  if (histStore.length) {
+    for (const m of histStore) addMsg(m.role, m.text, m.text);
+    histSavedCount = histStore.length;
+    addMsg("sys", "（已恢复上次聊天）");
+  } else {
+    addMsg("sys", "大肥鱼上线啦~ 和她打个招呼吧");
+  }
+})();
+
+function collectHistory() {
+  const arr = [];
+  msgsEl.querySelectorAll(".msg.user, .msg.fish").forEach((el) => {
+    arr.push({ role: el.classList.contains("user") ? "user" : "fish", text: el.dataset.raw || el.textContent });
+  });
+  return arr.slice(-60);
+}
+function chatHistory() {
+  return collectHistory()
+    .map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }))
+    .slice(-12);
+}
+
+async function initLLM() {
+  if (!cloud) {
+    addMsg("sys", CLOUD_CLEAN
+      ? "还没填云配置，所以没有连接任何账号。点右上角 ⚙ 填上自己的服务地址和公钥，填好就能聊了"
+      : "AI 服务组件没加载上，检查网络后重启桌宠试试");
+    return;
+  }
+  try {
+    const models = await cloud.llm.models.list();
+    const m = models.find((x) => x.disabled !== true);
+    if (m) modelId = m.id;
+  } catch (e) {
+    addMsg("sys", "模型服务连接失败，请稍后再试");
+  }
+}
+initLLM();
+
+/* ---------- 看视频的实时进度条 ---------- */
+const watchBar = document.getElementById("watch-bar"),
+      watchFill = document.getElementById("watch-fill"),
+      watchTxt = document.getElementById("watch-txt");
+function fmtSec(s) {
+  s = Math.max(0, Math.round(Number(s) || 0));
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+if (window.dafeiyu && window.dafeiyu.onWatchProgress) {
+  window.dafeiyu.onWatchProgress((p) => {
+    if (!p || !p.phase) return;
+    if (p.phase === "done") {
+      watchTxt.textContent = "✅ 看完了，正在整理要点…";
+      watchFill.style.width = "100%";
+      setTimeout(() => { watchBar.style.display = "none"; watchFill.style.width = "0%"; }, 1600);
+      return;
+    }
+    watchBar.style.display = "block";
+    if (p.phase === "meta") {
+      watchTxt.textContent = "🎬 " + (p.title || "视频") + (p.duration ? "（" + fmtSec(p.duration) + "）" : "");
+      watchFill.style.width = "0%";
+    } else if (p.phase === "ready") {
+      watchTxt.textContent = "播放器就绪，开始看…";
+    } else if (p.phase === "need-login") {
+      watchTxt.textContent = "🔐 需要你帮个忙：手机 B站 App 扫一下弹出窗口里的码，我等着呢…";
+      watchFill.style.width = "8%";
+    } else if (p.phase === "login-ok") {
+      watchTxt.textContent = "✅ 登录成功，继续看～";
+    } else if (p.phase === "login-cancel" || p.phase === "login-timeout") {
+      watchTxt.textContent = "好吧不扫就不扫，那我只能靠看画面认字了…";
+    } else if (p.phase === "watching") {
+      watchTxt.textContent = "👀 看到 " + fmtSec(p.cur) + " / " + fmtSec(p.end) +
+        " · 已记下 " + p.lines + " 段 · 关键画面 " + p.keys + " 张";
+      watchFill.style.width = Math.min(100, p.pct || 0) + "%";
+    }
+  });
+}
+
+/* ---------- 工具调用 ---------- */
+// 手工还原字符串字面量（模型常把 \n 写成真实换行，JSON.parse 会炸）
+function decodeLoose(str) {
+  try { return JSON.parse('"' + str + '"'); } catch (e) { /* 走下面手工还原 */ }
+  return str
+    .replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
+    .replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+// 模型给参数的方式五花八门：args 可能是对象、字符串、或直接摊在顶层，统一收拢
+const ARG_KEYS = ["path", "content", "append", "from", "to", "url", "x", "y", "x1", "y1", "x2", "y2",
+  "dx", "dy", "text", "key", "mode", "button", "clicks", "title", "keyword",
+  "name", "message", "prompt", "at", "everyMinutes", "once", "type"];
+function normalizeArgs(o) {
+  let args = o.args !== undefined ? o.args : o.arguments;
+  if (typeof args === "string") {
+    const t = args.trim().replace(/^```[a-z]*|```$/g, "");
+    try { args = JSON.parse(t); } catch (e) { args = null; }
+  }
+  if (!args || typeof args !== "object" || Array.isArray(args)) args = {};
+  // 顶层散落的参数补进去（模型常写成 {"tool":"write_file","path":"...","content":"..."}）
+  const merged = {};
+  for (const k of ARG_KEYS) if (o[k] !== undefined) merged[k] = o[k];
+  for (const k of Object.keys(args)) merged[k] = args[k];
+  // 常见的同义词
+  if (merged.path === undefined) {
+    const alt = merged.filepath || merged.file_path || merged.filename || merged.file || merged.target || merged.src;
+    if (typeof alt === "string") merged.path = alt;
+  }
+  if (merged.path === undefined && typeof merged.folder === "string") merged.path = merged.folder;
+  if (merged.content === undefined && typeof merged.text === "string" && merged.tool === undefined) merged.content = merged.text;
+  return merged;
+}
+
+// 模型输出的 JSON 常带空格 / 被 ```json 包裹 / 前后带客套话，都要能认出来
+function extractTool(text) {
+  if (!text) return null;
+  const s = String(text).replace(/```[a-zA-Z]*/g, "");
+  const re = /\{\s*"tool"\s*:\s*"([^"]+)"/i;
+  const m = re.exec(s);
+  if (!m) return null;
+  const start = m.index;
+  // 从 { 开始做括号配对，字符串内的括号不计
+  let depth = 0, inStr = false, esc = false, end = -1;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) return null;
+  const raw = s.slice(start, end + 1);
+  try {
+    const o = JSON.parse(raw);
+    if (o && typeof o.tool === "string") return { tool: o.tool.trim(), args: normalizeArgs(o) };
+  } catch (err) {
+    // JSON 不合法时逐字段抠出来，别整条丢掉
+    const args = {};
+    const kv = /"([A-Za-z_]+)"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/g;
+    let mm;
+    while ((mm = kv.exec(raw))) {
+      if (mm[1] === "tool") continue;
+      args[mm[1]] = decodeLoose(mm[2]);
+    }
+    if (Object.keys(args).length) return { tool: m[1].trim(), args: normalizeArgs({ args: args }) };
+  }
+  return null;
+}
+
+/* ---- 防 BV 号抄错 ----
+ * 真实事故：主人发的是 BV11c411w7MQ，模型抄成了 BV11c411w77M（就差末两位），
+ * 恰好是另一个真实视频，于是"看了"一个主人根本没发的视频，还抱怨字幕对不上。
+ * 模型抄长 token 就是会抄错，所以每次调带视频链接的工具，都拿主人消息里的 BV 号校对一遍。
+ * 误伤防护：BV 号若出现在工具结果里（比如 bili_up 搜出来的），说明模型是有意看那个，放行。 */
+function collectBvids(msgs) {
+  const owner = [], tool = [];
+  if (!Array.isArray(msgs)) return { owner, tool };
+  let scanned = 0;
+  for (let i = msgs.length - 1; i >= 0 && scanned < 40; i--, scanned++) {
+    const m = msgs[i];
+    if (!m || m.role !== "user") continue;
+    const text = typeof m.content === "string"
+      ? m.content
+      : Array.isArray(m.content)
+        ? m.content.filter((p) => p.type === "text").map((p) => p.text || "").join(" ")
+        : "";
+    if (!text) continue;
+    const ids = text.match(/BV[0-9A-Za-z]{10}/g) || [];
+    if (/^(工具结果|\(另附)/.test(text.trim())) { tool.push(...ids); continue; }   // 工具结果
+    if (!owner.length && ids.length) owner.push(...ids);   // 最近一条含 BV 的主人消息
+    if (owner.length && scanned > 2) break;                // 主人消息 + 周边都扫过了
+  }
+  return { owner: [...new Set(owner)], tool: [...new Set(tool)] };
+}
+
+function fixOwnerBvid(args, msgs) {
+  const { owner, tool } = collectBvids(msgs);
+  if (!owner.length || !args) return null;
+  for (const k of ["url", "bvid", "video", "id", "path"]) {
+    const v = args[k];
+    if (typeof v !== "string") continue;
+    const m = v.match(/BV[0-9A-Za-z]{10}/);
+    if (!m) continue;
+    if (owner.includes(m[0])) return null;   // 和主人发的一致
+    if (tool.includes(m[0])) return null;    // 模型从工具结果里拿的（有意看别的视频）
+    return { key: k, from: m[0], to: owner[0], args: Object.assign({}, args, { [k]: v.replace(/BV[0-9A-Za-z]{10}/g, owner[0]) }) };
+  }
+  return null;
+}
+
+function describeCall(tool, a) {
+  a = a || {};
+  if (tool === "mouse_move") return "🖱️ 把鼠标挪到 (" + a.x + ", " + a.y + ")";
+  if (tool === "mouse_click") return "🖱️ 在 (" + (a.x !== undefined ? a.x : "当前") + ", " + (a.y !== undefined ? a.y : "") + ") 点了" + (a.clicks === 2 ? "两下" : (a.button === "right" ? "右键" : "一下"));
+  if (tool === "mouse_scroll") return "🖱️ 滚轮" + (Number(a.dy) > 0 ? "向下" : "向上") + " " + Math.abs(Number(a.dy) || 1) + " 格";
+  if (tool === "mouse_drag") return "🖱️ 从 (" + a.x1 + "," + a.y1 + ") 拖到 (" + a.x2 + "," + a.y2 + ")";
+  if (tool === "key_type") return "⌨️ 输入「" + String(a.text || "").slice(0, 30) + "」";
+  if (tool === "key_press") return "⌨️ 按了 " + a.key;
+  if (tool === "open_path") return "📂 打开 " + (a.path || a.url);
+  if (tool === "open_app") return "🚀 打开软件 " + (a.name || a.app || a.keyword || "");
+  if (tool === "bookmarks") return "🔖 翻收藏夹" + (a.keyword ? "找「" + a.keyword + "」" : "");
+  if (tool === "open_bookmark") return "🔖 打开收藏「" + (a.name || a.keyword || a.title || "") + "」";
+  if (tool === "read_page") return "🌐 读网页 " + (a.url || "（当前页）");
+  if (tool === "click_page") return "👆 点页面里的「" + (a.text || a.label || "") + "」";
+  if (tool === "page_type") return "⌨️ 在网页里输入「" + String(a.text || "").slice(0, 20) + "」";
+  if (tool === "page_scroll") return "🖱️ 滚动网页";
+  if (tool === "close_page") return "🚪 关掉网页窗口";
+  if (tool === "bili_up") return "🔎 查 UP「" + (a.up || a.mid || "") + "」的视频排行";
+  if (tool === "bili_comments") return "💬 读评论区 " + (a.url || a.bvid || "");
+  if (tool === "bili_comment") return "✉️ 准备留言：" + String(a.message || "").slice(0, 24) + "（等主人确认）";
+  if (tool === "read_file") return "📄 读取 " + a.path;
+  if (tool === "list_dir") return "📁 看看目录 " + a.path;
+  if (tool === "fetch_url") return "🌐 抓取 " + a.url;
+  if (tool === "screenshot") return a && a.region ? "🔍 放大看屏幕 (" + a.region.x + "," + a.region.y + " " + a.region.w + "×" + a.region.h + ")" : "📷 截个屏看看";
+  if (tool === "ocr_screen") return a && a.region ? "🔍 认屏幕上那块字 (" + a.region.x + "," + a.region.y + " " + a.region.w + "×" + a.region.h + ")" : "📝 认屏幕上的字";
+  if (tool === "screen_info") return "🖥️ 看屏幕信息";
+  if (tool === "sys_paths") return "🗂️ 确认一下真实目录";
+  if (tool === "write_file") return (a.append ? "✍️ 往 " : "📝 写到 ") + (a.path || "");
+  if (tool === "make_dir") return "📁 新建文件夹 " + (a.path || "");
+  if (tool === "move_file") return "📦 从 " + (a.from || a.path) + " 移到 " + (a.to || a.target);
+  return "🔧 " + tool;
+}
+
+function briefResult(res) {
+  if (!res) return "完成";
+  if (res.error) return res.error;
+  if (res.opened && res.via && !res.path) {
+    return "打开「" + res.opened + "」（" + res.via + "）" +
+      (res.matched && res.matched.indexOf("模糊") === 0 ? "，是按名字猜的" : "") +
+      (res.alternatives && res.alternatives.length ? "；相近的还有 " + res.alternatives.slice(0, 3).join("、") : "");
+  }
+  // 看视频的结果里也有 text 字段，必须排在通用规则前面，否则会显示成"HTTP …"
+  if (res.bvid && res.timeline) {
+    return "看完《" + res.title + "》（" + res.durationText + "），抓到 " + res.timeline.length + " 段内容" +
+      (res.imageCount ? "、" + res.imageCount + " 张关键画面" : "") + "，用时 " + res.elapsed + " 秒";
+  }
+  if (res.videos && res.mid) {
+    return "查到 UP「" + res.up + "」" + (res.videos.length ? "播放量第 1：" + res.videos[0].title.slice(0, 26) + "（" + res.videos[0].play + "播放）" : "");
+  }
+  if (res.comments && res.total !== undefined) {
+    return "读到「" + res.title.slice(0, 20) + "」的 " + (res.total || 0) + " 条评论（显示 " + res.comments.length + " 条）";
+  }
+  if (res.posted) return "✅ 评论已发出（主人确认过）";
+  if (res.title !== undefined && res.url && res.text !== undefined) {
+    return "读到页面「" + res.title + "」（" + (res.text || "").length + " 字、" + ((res.links || []).length) + " 个链接）" + (res.changed !== undefined ? "" : "");
+  }
+  if (res.clicked) return "点了「" + res.clicked + "」" + (res.changed ? "，页面跳转了" : "（页内变化）");
+  if (res.format) {
+    return "存到 " + res.path + "（" + res.format + (res.pages ? "，" + res.pages + " 页" : "") + "，" + Math.round(res.bytes / 1024) + "KB" +
+      (res.formatting ? "；" + res.formatting : "") + "）";
+  }
+  if (res.path && res.bytes !== undefined) return "存到 " + res.path + "（" + res.bytes + " 字节" + (res.verified ? "，已核对" : "") + "）";
+  // 读文件的结果也有 path，但带 content：先判读、再判建（否则会显示成"已建好"）
+  if (res.content !== undefined) {
+    return "读到 " + (res.size || res.content.length) + " 字节" + (res.pages ? "（共 " + res.pages + " 页）" : "") + (res.truncated ? "（已截断）" : "");
+  }
+  if (res.path && res.mode === undefined && res.bytes === undefined) return "已建好 " + res.path;
+  if (res.text !== undefined) return "HTTP " + res.status + "，" + res.text.length + " 字符" + (res.truncated ? "（已截断）" : "");
+  if (res.items) return "共 " + res.count + " 项";
+  const s = JSON.stringify(res);
+  return s.length > 160 ? s.slice(0, 160) + "…" : s;
+}
+
+/* 部分模型服务（DeepSeek 系）会把内容安全自检的内部标记混进正文，
+   例如 <ds_safety>[用户未成年]否 … Safe</ds_safety>。这是审核层的中间产物，
+   绝不能给主人看：完整的成对标记整段剥掉，流式里只出现前半个的也截掉。 */
+function stripSafetyTag(text) {
+  let out = text.replace(/<ds_safety>[\s\S]*?<\/ds_safety>/g, "");
+  const open = out.indexOf("<ds_safety");           // 标记还没闭合（流式中途）：从这里截断
+  if (open !== -1) out = out.slice(0, open);
+  return out.replace(/<\/ds_safety>/g, "").replace(/^\s+|\s+$/g, "");
+}
+
+/* 自主冲浪的过程播报：EVENT:xxx 必须独立成行，从正文里剥掉后转发给桌宠做动作，
+   主人永远看不到这些标记；流式里只写了半截（还没换行）时先藏起来。 */
+const SURF_EVENTS = ["idle", "fetch_notice", "watching_video", "thinking", "writing_comment", "surf_end", "surf_start", "round_end"];
+function splitSurfEvents(text) {
+  const events = [];
+  let shown = text.replace(/^[ \t]*EVENT:[ \t]*([a-z_]+)[ \t]*$/gm, (m, name) => {
+    if (SURF_EVENTS.indexOf(name) === -1) return m;
+    events.push(name);
+    return "";
+  });
+  const cut = /(^|\n)[ \t]*EVENT:[^\n]*$/.exec(shown);
+  if (cut) shown = shown.slice(0, cut.index);
+  shown = shown.replace(/\n{3,}/g, "\n\n").replace(/^\s+|\s+$/g, "");
+  return { shown, events };
+}
+function emitSurfEvent(ev) {
+  try { window.dafeiyu.surfEvent(ev); } catch (e) { /* 桌宠不在也不影响聊天 */ }
+}
+
+async function streamOnce(messages) {
+  let content = "", bubble = null, sentEvents = 0;
+  abortCtrl = new AbortController();
+  const stream = cloud.llm.chat.completions.create({
+    model: modelId,
+    messages,
+    stream: true,
+    temperature: 0.7,
+    signal: abortCtrl.signal,
+  });
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0] && chunk.choices[0].delta;
+    if (delta && delta.content) {
+      content += delta.content;
+      const parsed = splitSurfEvents(stripSafetyTag(content));
+      if (parsed.events.length > sentEvents) {
+        parsed.events.slice(sentEvents).forEach(emitSurfEvent);
+        sentEvents = parsed.events.length;
+      }
+      if (!parsed.shown && !bubble) continue;
+      if (!bubble) bubble = addMsg("fish", "");
+      bubble.textContent = parsed.shown;
+      bubble.dataset.raw = parsed.shown;
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+  }
+  return { content: splitSurfEvents(stripSafetyTag(content)).shown, bubble };
+}
+
+async function runTurn(userText, opts) {
+  opts = opts || {};
+  const endRound = () => {                     // 冲浪轮不论怎么结束都要收尾，避免状态残留
+    if (!opts.surf) return;
+    try { window.dafeiyu.surfEvent("round_end"); } catch (e) {}
+  };
+  /* 干净版兜底：没配置就绝不发请求（定时任务/脚本触发的路径也会被挡在这里） */
+  if (CLOUD_CLEAN && !cloud) {
+    addMsg("sys", "还没有填云配置，这条没有发出去。点右上角 ⚙ 填上自己的服务地址和公钥再聊。");
+    endRound();
+    return;
+  }
+  if (!modelId) await initLLM();                     // 首次进页面时模型列表可能还没回来，补一次
+  if (!modelId) { addMsg("sys", "模型还没准备好，稍等一下再试~"); endRound(); return; }
+  if (generating) { endRound(); return; }
+  generating = true;
+  sendBtn.textContent = "■"; sendBtn.classList.add("stop");
+  window.dafeiyu.chatState("think");
+
+  const hist = chatHistory();
+  // 保证本轮这句话一定在 messages 里（定时任务、脚本触发时不依赖 DOM 顺序）
+  if (!hist.length || hist[hist.length - 1].content !== userText) hist.push({ role: "user", content: userText });
+  const messages = [
+    { role: "system", content: FISH_PERSONA + (opts.surf ? SURF_DOC : "") + (pcEnabled ? TOOL_DOC + envDoc() : "") },
+    ...hist,
+  ];
+
+  try {
+    let lastSig = "", sameRun = 0, cut = "";
+    let step = 0;
+    for (; step < MAX_STEPS; step++) {
+      pruneMessages(messages);
+      const { content, bubble } = await streamOnce(messages);
+      const call = extractTool(content);
+      if (!call) break;                                  // 普通回答，结束
+      if (!call.args || !Object.keys(call.args).length) {
+        console.error("tool call without args:", content.slice(0, 400));
+      }
+
+      // 同一个操作反复做还没进展：别让它无限撞墙，停下来问主人
+      const sig = call.tool + ":" + JSON.stringify(call.args || {});
+      if (sig === lastSig) sameRun++; else { sameRun = 0; lastSig = sig; }
+      if (sameRun >= 3) {
+        if (bubble) bubble.textContent = "这个操作我已经连试 4 次了，还是同样的结果…";
+        cut = "repeat";
+        break;
+      }
+
+      if (bubble) bubble.textContent = describeCall(call.tool, call.args);  // JSON 换成好懂的一句
+      // BV 号校对：模型抄主人链接抄错末几位时会指向另一个真实视频，必须拉回来
+      const bvidFix = fixOwnerBvid(call.args, messages);
+      if (bvidFix) {
+        call.args = bvidFix.args;
+        if (bubble) bubble.textContent = describeCall(call.tool, call.args) + "（BV 号按主人发的链接校正）";
+      }
+      if (!pcEnabled) {
+        addMsg("tool err", "电脑操作权限关着，鱼动不了手。右键大肥鱼 → 设置 → 🖱️ 电脑操作 打开后再试");
+        break;
+      }
+      const res = await window.dafeiyu.pc(call.tool, call.args || {});
+      if (bvidFix && res.ok && res.result && typeof res.result === "object") {
+        res.result.note =
+          (res.result.note ? res.result.note + "；" : "") +
+          "⚠️ 注意：你参数里写的 " + bvidFix.from + " 不是主人发的视频（主人发的是 " + bvidFix.to +
+          "，你已经看对的了）。以后视频链接要从主人消息里原样复制，一个字符都不能错。";
+      }
+      if (!res.ok) console.error("tool failed:", call.tool, JSON.stringify(call.args || {}).slice(0, 300), "|", res.error);
+      addMsg("tool" + (res.ok ? "" : " err"),
+        (res.ok ? "✅ " : "❌ ") + call.tool + "：" + briefResult(res.ok ? res.result : res));
+      messages.push({ role: "assistant", content });
+      // 截屏结果带图片数据：把图直接给模型"看"（多模态消息），而不是读路径
+      if (res.ok && call.tool === "watch_video" && res.result && res.result.bvid) {
+        // 看视频：时间线当文字给，关键画面当图片给（一条消息里混着发，最省上下文）
+        const r = res.result;
+        const imgs = Array.isArray(r.images) ? r.images : [];
+        const lines = [
+          "工具结果：watch_video 看完了，内容如下。",
+          "标题：" + r.title + "（UP：" + r.up + "，时长 " + r.durationText + "，看的是 " + (r.stats && r.stats.playedTo || "开头一段") + " 之前的部分）",
+          "方式：" + (r.mode === "subtitle" ? "B站官方字幕" : "边播边认画面文字") +
+            "，共 " + (r.timeline || []).length + " 段，关键画面 " + imgs.length + " 张" + (r.note ? "；注意：" + r.note : ""),
+          "",
+          "—— 内容时间线 ——",
+          r.text || "（没读到文字）",
+        ];
+        if (imgs.length) lines.push("", "下面附了 " + imgs.length + " 张关键画面（按时间顺序），可以对照着看画面里讲了什么。");
+        lines.push("", "请基于上面的内容，直接写总结。");
+        const parts = [{ type: "text", text: lines.join("\n").slice(0, 18000) }];
+        imgs.forEach((u) => parts.push({ type: "image_url", image_url: { url: u } }));
+        messages.push({ role: "user", content: parts });
+      } else if (res.ok && (call.tool === "screenshot" || call.tool === "ocr_screen") && res.result && res.result.imageDataUrl) {
+        const isOcr = call.tool === "ocr_screen";
+        const text = isOcr
+          ? "工具结果：ocr_screen 识别完成（区域已放大）。★OCR 可能认错字——下面附了放大原图，请逐字对照图片，尤其是人名、群名、数字、金额，一律以图为准。\n—— OCR 文字 ——\n" + (res.result.text || "（没认出文字）")
+          : "工具结果：screenshot 成功" + (res.result.region ? "（局部" + (res.result.region.zoomed ? "放大 2 倍" : "") + "截图）" : "") + "（" + Math.round(res.result.bytes / 1024) + "KB）。请仔细看图回答主人的问题。";
+        messages.push({
+          role: "user",
+          content: [
+            { type: "text", text },
+            { type: "image_url", image_url: { url: res.result.imageDataUrl } },
+          ],
+        });
+      } else if (res.ok && call.tool === "read_page" && res.result) {
+        // 读网页：正文当文字给（截图只是辅助，别让它占上下文主体）
+        const r = res.result;
+        const shot = r.shot;
+        delete r.shot;
+        const linkLines = (r.links || []).slice(0, 30).map((l) => "· " + l.text + " → " + l.href).join("\n");
+        const txt =
+          "工具结果：read_page 打开了 " + (r.url || "") + "\n标题：" + (r.title || "") + "\n\n—— 页面正文 ——\n" +
+          (r.text || "（没读到文字）").slice(0, 9000) +
+          (linkLines ? "\n\n—— 页面上的链接（" + (r.links || []).length + " 个，列出前 30）——\n" + linkLines : "") +
+          "\n\n要打开其中某个链接/继续点页面，用 click_page {\"text\":\"…\"}；要重新读当前页就 read_page 不带 url。";
+        if (shot) {
+          messages.push({
+            role: "user",
+            content: [
+              { type: "text", text: txt.slice(0, 16000) + "\n\n（另附一张页面截图，文字认不准时可以对照看。）" },
+              { type: "image_url", image_url: { url: shot } },
+            ],
+          });
+        } else {
+          messages.push({ role: "user", content: txt.slice(0, 16000) });
+        }
+      } else {
+        messages.push({
+          role: "user",
+          content: "工具结果：" + JSON.stringify(res.ok ? res.result : { error: res.error }).slice(0, 3000) +
+            (res.ok ? "" : "\n（这次工具失败了。检查一下参数名字和格式，按工具说明重新输出一个完整 JSON 再试；不要放弃，也不要让主人自己动手）"),
+        });
+      }
+    }
+
+    // 步数用满还没干完：让它先收个尾，别直接把对话掐断
+    if (step >= MAX_STEPS) {
+      cut = "steps";
+      messages.push({
+        role: "user",
+        content: "（这轮工具调用次数已经用满，先别再调工具了。用一两句话告诉主人：现在做到哪一步、还差什么。）",
+      });
+      try { await streamOnce(messages); } catch (e) { /* 收尾失败不影响主流程 */ }
+    }
+    if (cut === "steps") addMsg("sys", "这轮已经连续操作 " + MAX_STEPS + " 次，先停下来喘口气。回一句「继续」我就接着往下干~");
+    if (cut === "repeat") addMsg("sys", "同一个操作重复了好几次都没变化，可能哪里卡住了。跟主人说一声，或者换个说法让我试试？");
+
+    window.dafeiyu.chatState("idle");
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      addMsg("sys", "（被叫停了）");
+    } else {
+      console.error("turn failed:", (e && e.name) + " " + (e && e.message),
+        (e && e.response) ? JSON.stringify(e.response).slice(0, 300) : "");
+      addMsg("sys", "呜……网络开小差了，稍后再试");
+    }
+    window.dafeiyu.chatState("idle");
+  }
+  generating = false;
+  sendBtn.textContent = "➤"; sendBtn.classList.remove("stop");
+  syncHistory();
+  endRound();                                        // 本轮冲浪结束：解除"自主冲浪"状态，评论风控随之失效
+}
+
+sendBtn.addEventListener("click", () => {
+  if (generating) { if (abortCtrl) abortCtrl.abort(); return; }
+  /* 干净版：没填配置就不让发，直接引导去填 */
+  if (CLOUD_CLEAN && !myCfg) {
+    addMsg("sys", "先填上自己的云配置才能聊天～填好之后，所有消耗都记在你自己的账号上。");
+    openCfgBox();
+    return;
+  }
+  const text = inputEl.value.trim();
+  if (!text) return;
+  addMsg("user", text);
+  inputEl.value = "";
+  runTurn(text);
+});
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
+});
+document.getElementById("close").addEventListener("click", () => {
+  if (generating && abortCtrl) abortCtrl.abort();
+  window.close();
+});
+
+/* ---------- 清除对话（🧹 按钮） ---------- */
+const clearBtn = document.getElementById("clear"),
+      clearMenu = document.getElementById("clear-menu"),
+      clearScreenBtn = document.getElementById("clear-screen"),
+      clearAllBtn = document.getElementById("clear-all");
+let clearAllArmed = false;   // 全清需二次确认，第一次点先"上膛"
+
+function toggleClearMenu(show) {
+  clearMenu.style.display = show ? "block" : "none";
+  if (!show) { clearAllArmed = false; clearAllBtn.textContent = "🗑️ 清除屏幕 + 本地记录"; }
+}
+clearBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleClearMenu(clearMenu.style.display !== "block");
+});
+document.addEventListener("click", (e) => {
+  if (clearMenu.style.display === "block" && !clearMenu.contains(e.target)) toggleClearMenu(false);
+});
+
+clearScreenBtn.addEventListener("click", () => {
+  toggleClearMenu(false);
+  if (generating && abortCtrl) abortCtrl.abort();
+  const had = histStore.length > 0;
+  msgsEl.innerHTML = "";
+  histSavedCount = 0;               // DOM 清空，histStore 原样保留
+  addMsg("sys", had
+    ? "屏幕清干净啦~ 本地记录还在，下次打开聊天窗会自动找回"
+    : "屏幕清干净啦~");
+});
+
+clearAllBtn.addEventListener("click", () => {
+  if (!clearAllArmed) {
+    clearAllArmed = true;
+    clearAllBtn.textContent = "⚠️ 再点一次确认清除（不可恢复）";
+    return;
+  }
+  toggleClearMenu(false);
+  if (generating && abortCtrl) abortCtrl.abort();
+  msgsEl.innerHTML = "";
+  histStore = [];
+  histSavedCount = 0;
+  try { localStorage.removeItem(HIST_KEY); } catch (e) { /* ignore */ }
+  addMsg("sys", "屏幕和本地记录都清干净啦~ 我们重新开始吧");
+});
+
+/* ---------- 账号配置：谁用谁填，额度不串账 ---------- */
+const accBadge = document.getElementById("acc"),
+      cfgBox = document.getElementById("cfg-box"),
+      firstBox = document.getElementById("first-box"),
+      cfgEndpoint = document.getElementById("cfg-endpoint"),
+      cfgKey = document.getElementById("cfg-key"),
+      cfgErr = document.getElementById("cfg-err");
+
+function updateAccBadge() {
+  if (CLOUD_CLEAN && !myCfg) {
+    accBadge.textContent = "未配置";
+    accBadge.classList.remove("own");
+    accBadge.title = "还没填自己的云配置：点右上角 ⚙ 填上才能聊天（不会用任何人的额度）";
+    return;
+  }
+  accBadge.textContent = myCfg ? "我的额度" : "共享额度";
+  accBadge.classList.toggle("own", !!myCfg);
+  accBadge.title = myCfg
+    ? "当前用你自己填的配置：" + myCfg.endpoint
+    : "当前用程序内置账号的额度（点右上角 ⚙ 换成本人的）";
+}
+updateAccBadge();
+
+function openCfgBox() {
+  cfgEndpoint.value = myCfg ? myCfg.endpoint : "";
+  cfgKey.value = myCfg ? myCfg.publishableKey : "";
+  cfgErr.textContent = "";
+  cfgBox.classList.add("show");
+  setTimeout(() => cfgEndpoint.focus(), 30);
+}
+function closeCfgBox() { cfgBox.classList.remove("show"); }
+
+function switchCloud(cfg, tip) {
+  if (generating && abortCtrl) abortCtrl.abort();
+  myCfg = cfg;
+  try {
+    if (cfg) localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify(cfg));
+    else localStorage.removeItem(CLOUD_CFG_KEY);
+  } catch (e) { /* ignore */ }
+  initCloud();
+  modelId = null;
+  updateAccBadge();
+  addMsg("sys", tip);
+  initLLM();
+}
+
+document.getElementById("cfg").addEventListener("click", openCfgBox);
+document.getElementById("cfg-cancel").addEventListener("click", closeCfgBox);
+
+document.getElementById("cfg-save").addEventListener("click", async () => {
+  const c = { endpoint: cfgEndpoint.value.trim(), publishableKey: cfgKey.value.trim() };
+  if (!/^https?:\/\/[^\s]+$/i.test(c.endpoint)) { cfgErr.textContent = "服务地址要以 http:// 或 https:// 开头"; return; }
+  if (c.publishableKey.length < 8) { cfgErr.textContent = "公钥看起来不完整（应是一串以 wbpk_ 开头的字符）"; return; }
+  const btn = document.getElementById("cfg-save");
+  cfgErr.textContent = "";
+  btn.textContent = "验证中…"; btn.disabled = true;
+  let ok = true, detail = "";
+  try {
+    const probe = WorkBuddyCloud.createWorkBuddyCloud({
+      endpoint: c.endpoint, oauthRelayBaseUrl: OAUTH_RELAY, publishableKey: c.publishableKey,
+    });
+    const models = await probe.llm.models.list();
+    if (!Array.isArray(models) || !models.length) { ok = false; detail = "返回的模型列表是空的，应用可能还没开模型"; }
+  } catch (e) {
+    ok = false;
+    detail = (e && (e.message || e.error)) || "连不上";
+  }
+  btn.textContent = "保存并使用"; btn.disabled = false;
+  if (!ok) {
+    cfgErr.textContent = "这份配置用不了：" + detail + "（检查地址/公钥是否正确、应用是否已部署）";
+    return;
+  }
+  closeCfgBox();
+  switchCloud(c, "✅ 已切换成你自己的账号，之后的对话消耗都记在你名下");
+});
+
+document.getElementById("cfg-reset").addEventListener("click", () => {
+  cfgErr.textContent = "";
+  closeCfgBox();
+  if (CLOUD_CLEAN) switchCloud(null, "已清空配置。没有配置就不能聊天，随时点 ⚙ 重新填一份。");
+  else switchCloud(null, "已恢复默认配置：现在用的是程序内置账号的额度");
+});
+
+/* 干净版：把"恢复默认"改成"清空配置"，避免让人以为还有一份默认账号可用 */
+if (CLOUD_CLEAN) {
+  document.getElementById("cfg-reset").textContent = "清空配置";
+  const cfgTitle = document.querySelector("#cfg-box h3");
+  const cfgPs = document.querySelectorAll("#cfg-box p");
+  if (cfgTitle) cfgTitle.textContent = "填写你自己的云账号";
+  if (cfgPs[0]) cfgPs[0].innerHTML = "这个版本<b>不内置任何账号</b>：填了谁的配置，对话就花谁的额度。不填，聊天不会发出任何请求。";
+  if (cfgPs[1]) cfgPs[1].innerHTML = "哪里拿：在 WorkBuddy 里用「云服务」建一个应用，把它的<b>服务地址</b>和<b>公钥</b>复制过来（公钥形如 wbpk_ 开头）。";
+}
+
+/* 干净版：首屏卡片改成"必须自己填"，并去掉"先用内置的"这条路 */
+if (CLOUD_CLEAN) {
+  const fbTitle = firstBox.querySelector("h3");
+  const fbPs = firstBox.querySelectorAll("p");
+  if (fbTitle) fbTitle.textContent = "先填上你自己的云配置";
+  if (fbPs[0]) fbPs[0].innerHTML = "鱼鱼的思考能力走<b>云端大模型</b>，按账号计费。这个版本<b>不内置任何账号</b>，填谁的配置就花谁的额度。";
+  if (fbPs[1]) fbPs[1].innerHTML = "<b>必须填一份才能聊天</b><br>点下面的按钮，把自己账号的<b>服务地址</b>和<b>公钥</b>（wbpk_ 开头）粘进来。填好之前，鱼不会发出任何请求。";
+  if (fbPs[2]) fbPs[2].style.display = "none";
+  const borrowBtn = document.getElementById("first-borrow");
+  if (borrowBtn) borrowBtn.style.display = "none";
+  const ownBtn = document.getElementById("first-own");
+  if (ownBtn) ownBtn.textContent = "填写我的云配置";
+}
+
+/* 首次运行：还没填自己的配置 → 提示（干净版没配置就每次启动都提示，直到填上） */
+if (!myCfg && (CLOUD_CLEAN || !localStorage.getItem(CLOUD_SEEN_KEY))) {
+  firstBox.classList.add("show");
+}
+function markSeen() {
+  try { localStorage.setItem(CLOUD_SEEN_KEY, "1"); } catch (e) { /* ignore */ }
+}
+document.getElementById("first-own").addEventListener("click", () => {
+  markSeen();
+  firstBox.classList.remove("show");
+  openCfgBox();
+});
+document.getElementById("first-borrow").addEventListener("click", () => {
+  if (CLOUD_CLEAN) return;           // 干净版没有这条路（按钮也隐藏了）
+  markSeen();
+  firstBox.classList.remove("show");
+  addMsg("sys", "先用内置账号的额度。想换成本人的，随时点右上角 ⚙ 填配置");
+});
+</script>
+</body>
+</html>

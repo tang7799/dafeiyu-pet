@@ -1,0 +1,35 @@
+# 干净版打包配置：与 package.json 的 build 字段互相独立
+# 差异点：不同 appId / productName / 输出目录 / 快捷方式名，可与原版共存
+appId: com.dafeiyu.desktop-pet.clean
+productName: DafeiyuPetClean
+copyright: Copyright © 2026 Dudu Studio. All rights reserved.
+directories:
+  output: dist-clean
+  buildResources: build
+asar: true
+files:
+  - "**/*"
+  - "!*_preview.png"
+  - "!probe.png"
+  - "!probe.html"
+  - "!probe.js"
+  - "!fetch_anims.py"
+  - "!build/**/*"
+  - "!dist*/**/*"
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  legalTrademarks: 大肥鱼桌宠（干净版）· Dudu Studio
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 大肥鱼桌宠（干净版）
+  uninstallDisplayName: 大肥鱼桌宠（干净版）
+  runAfterFinish: true
+  include: build/installer.nsh
+  artifactName: DafeiyuPet-Clean-Setup-${version}.${ext}

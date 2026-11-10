@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+<title>大肥鱼要发评论</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Microsoft YaHei", sans-serif; background: #fff;
+    border: 1.5px solid #9fd0ec; border-radius: 14px;
+    display: flex; flex-direction: column; color: #2a5578;
+  }
+  #head {
+    padding: 10px 13px; background: #eaf6ff; font-size: 13px; color: #1f6fa8;
+    display: flex; align-items: center; justify-content: space-between;
+    -webkit-app-region: drag; user-select: none; border-radius: 12px 12px 0 0; flex: none;
+  }
+  #head .t { display: flex; align-items: center; gap: 6px; pointer-events: none; }
+  #head .badge { font-size: 10px; background: #fff2e0; color: #b8762a; border: 1px solid #f4dcb8; border-radius: 8px; padding: 1px 6px; }
+  #x { -webkit-app-region: no-drag; cursor: pointer; color: #6b8ca6; font-size: 15px; line-height: 1; padding: 0 3px; }
+  #x:hover { color: #e86a5d; }
+  #body { flex: 1; overflow-y: auto; padding: 12px 13px 4px; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: #f7fbfe; border: 1px solid #e2eefa; border-radius: 10px; padding: 8px 10px; }
+  .card .vt { font-size: 12.5px; color: #1c5c8c; line-height: 1.45; font-weight: bold; word-break: break-word; }
+  .card .vu { font-size: 11px; color: #8aa7bd; margin-top: 3px; }
+  .quote { background: #fdf8ec; border-left: 3px solid #f0c675; border-radius: 6px; padding: 7px 9px; font-size: 11.5px; color: #8a6a2f; line-height: 1.5; }
+  .quote .who { color: #b8762a; font-weight: bold; }
+  #boxwrap { position: relative; }
+  #txt {
+    width: 100%; height: 132px; resize: none; border: 1.5px solid #cfe5f3; border-radius: 10px;
+    padding: 9px 10px 22px; font-size: 12.5px; line-height: 1.6; color: #2a5578;
+    font-family: "Microsoft YaHei", sans-serif; outline: none; background: #fff;
+  }
+  #txt:focus { border-color: #7fc0ea; box-shadow: 0 0 0 3px rgba(125,190,234,.15); }
+  #cnt { position: absolute; right: 10px; bottom: 7px; font-size: 10.5px; color: #a8c0d2; pointer-events: none; }
+  #cnt.warn { color: #e08a3d; }
+  #cnt.over { color: #e05a4d; font-weight: bold; }
+  .tip { font-size: 11px; color: #94a3ad; line-height: 1.55; }
+  .tip b { color: #d98324; }
+  #foot { flex: none; padding: 10px 13px 12px; display: flex; gap: 8px; align-items: center; }
+  #st { flex: 1; font-size: 11px; color: #8aa7bd; }
+  button {
+    border: none; border-radius: 9px; padding: 8px 0; width: 84px; cursor: pointer;
+    font-size: 12.5px; font-family: inherit; transition: .15s;
+  }
+  #cancel { background: #f0f4f7; color: #6a7f92; }
+  #cancel:hover { background: #e6ecf1; }
+  #send { background: linear-gradient(135deg,#5db3ea,#3e97d6); color: #fff; box-shadow: 0 2px 8px rgba(80,160,215,.28); }
+  #send:hover { filter: brightness(1.05); }
+  #send:disabled { background: #cfdde7; color: #eef4f8; box-shadow: none; cursor: not-allowed; }
+</style>
+</head>
+<body>
+  <div id="head">
+    <div class="t"><span>🐟</span><span>大肥鱼想在这里留个言</span><span class="badge">要你点头才发</span></div>
+    <div id="x" title="取消">✕</div>
+  </div>
+
+  <div id="body">
+    <div class="card">
+      <div class="vt" id="vtitle">加载中…</div>
+      <div class="vu" id="vup"></div>
+    </div>
+    <div class="quote" id="quote" style="display:none">
+      回复 <span class="who" id="qwho"></span>：<span id="qtext"></span>
+    </div>
+    <div id="boxwrap">
+      <textarea id="txt" placeholder="写点啥…" maxlength="1200"></textarea>
+      <div id="cnt">0 / 1000</div>
+    </div>
+    <div class="tip">
+      这条会<b>用你的 B 站账号公开发布</b>在视频下面，别人都看得到。内容可以直接改，改完点「发布」。<br>
+      Ctrl + Enter 发布，Esc 取消。
+    </div>
+  </div>
+
+  <div id="foot">
+    <div id="st"></div>
+    <button id="cancel">取消</button>
+    <button id="send">发布</button>
+  </div>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const txt = $("#txt"), cnt = $("#cnt"), sendBtn = $("#send"), st = $("#st");
+  let info = null;
+
+  function updCount() {
+    const n = txt.value.replace(/\s/g, "").length;
+    const raw = txt.value.length;
+    cnt.textContent = n + " / 1000";
+    cnt.className = raw > 1000 ? "over" : raw > 900 ? "warn" : "";
+    sendBtn.disabled = !txt.value.trim() || raw > 1000;
+  }
+
+  function done(action) {
+    const text = txt.value.trim();
+    if (action === "send" && !text) return;
+    st.textContent = action === "send" ? "发布中…" : "";
+    sendBtn.disabled = true;
+    window.dfyCmt.reply({ action, text });
+  }
+
+  sendBtn.onclick = () => done("send");
+  $("#cancel").onclick = () => done("cancel");
+  $("#x").onclick = () => done("cancel");
+
+  txt.addEventListener("input", updCount);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); done("cancel"); }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!sendBtn.disabled) done("send"); }
+  });
+
+  (async () => {
+    try {
+      info = await window.dfyCmt.info();
+    } catch (e) {
+      st.textContent = "读取信息失败";
+      return;
+    }
+    $("#vtitle").textContent = info.title || "（未读到标题）";
+    $("#vup").textContent = (info.up ? "UP 主：" + info.up : "") + (info.url ? "　·　" + info.url : "");
+    if (info.replyTo && info.replyTo.uname) {
+      $("#quote").style.display = "block";
+      $("#qwho").textContent = "@" + info.replyTo.uname;
+      $("#qtext").textContent = String(info.replyTo.text || "").slice(0, 120);
+    }
+    txt.value = info.message || "";
+    updCount();
+    txt.focus();
+    txt.setSelectionRange(txt.value.length, txt.value.length);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dist-*/
+dist-clean*/
+
+# 日志
+*.log
+
+# 本地生成的一次性辅助文件（任意层级匹配）
+_check_*.js
+_chatcheck.js
+_chat.original.html
+_shot/
+_activate.vbs
+_build.log
+
+# 系统文件
+Thumbs.db
+.DS_Store
+upload_url.json

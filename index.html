@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>大肥鱼桌宠 · 吃白饭的蓝色大肥鱼</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, #cfe9fb 0%, #e8f6ff 45%, #fdf3e3 100%);
+    user-select: none;
+    touch-action: none;
+  }
+  /* 桌面装饰云朵 */
+  .cloud { position: fixed; background: rgba(255,255,255,.85); border-radius: 50px; pointer-events: none; }
+  .cloud::before, .cloud::after { content: ""; position: absolute; background: inherit; border-radius: 50%; }
+  .cloud.c1 { width: 130px; height: 40px; top: 12%; left: 8%; animation: drift 60s linear infinite; }
+  .cloud.c1::before { width: 55px; height: 55px; top: -22px; left: 18px; }
+  .cloud.c1::after { width: 40px; height: 40px; top: -14px; left: 60px; }
+  .cloud.c2 { width: 90px; height: 30px; top: 28%; left: 70%; animation: drift 80s linear infinite reverse; }
+  .cloud.c2::before { width: 40px; height: 40px; top: -16px; left: 12px; }
+  .cloud.c2::after { width: 30px; height: 30px; top: -10px; left: 42px; }
+  @keyframes drift { from { transform: translateX(0); } to { transform: translateX(60vw); } }
+
+  /* 状态 HUD */
+  #hud {
+    position: fixed; top: 14px; left: 14px; z-index: 50;
+    background: rgba(255,255,255,.8); backdrop-filter: blur(8px);
+    border: 1px solid rgba(120,180,220,.4); border-radius: 16px;
+    padding: 10px 14px; font-size: 13px; color: #2a5578;
+    box-shadow: 0 4px 14px rgba(80,140,190,.15);
+    line-height: 1.7; min-width: 170px;
+  }
+  #hud .name { font-weight: 700; font-size: 15px; color: #1f6fa8; }
+  #hud .bar { height: 8px; background: #e3eef7; border-radius: 6px; overflow: hidden; margin-top: 2px; }
+  #hud .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#ffb45e,#ff8a3d); border-radius: 6px; transition: width .6s; }
+  #hud .stat-row { display: flex; gap: 12px; align-items: baseline; }
+  #hud .mood { font-size: 16px; }
+
+  .iconbtn {
+    position: fixed; z-index: 60; width: 44px; height: 44px; border-radius: 50%;
+    border: 1px solid rgba(120,180,220,.45); background: rgba(255,255,255,.85);
+    font-size: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(80,140,190,.2);
+    display: flex; align-items: center; justify-content: center; transition: transform .15s;
+  }
+  .iconbtn:hover { transform: scale(1.1); }
+  #btn-chat { right: 16px; bottom: 90px; }
+  #btn-tasks { right: 16px; bottom: 26px; }
+  #btn-set { right: 70px; bottom: 26px; }
+
+  /* 桌宠层 */
+  #pet-layer { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+  #pet {
+    position: absolute; width: 130px; height: 130px; pointer-events: auto;
+    cursor: grab; touch-action: none; will-change: transform;
+  }
+  #pet:active { cursor: grabbing; }
+  #pet svg { width: 100%; height: 100%; overflow: visible; }
+
+  /* 气泡 */
+  #bubble {
+    position: fixed; z-index: 55; max-width: 240px; pointer-events: none;
+    background: #fff; color: #2a5578; border: 1.5px solid #9fd0ec;
+    border-radius: 14px; padding: 8px 12px; font-size: 13.5px; line-height: 1.55;
+    box-shadow: 0 4px 14px rgba(80,140,190,.2); opacity: 0; transform: translateY(6px);
+    transition: opacity .25s, transform .25s;
+  }
+  #bubble.show { opacity: 1; transform: translateY(0); }
+  #bubble::after {
+    content: ""; position: absolute; bottom: -8px; left: 26px;
+    border: 8px solid transparent; border-top-color: #9fd0ec; border-bottom: 0;
+  }
+
+  /* 动画状态 */
+  .pet-bob { animation: bob 2.6s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+  .pet-walk { animation: waddle .5s ease-in-out infinite; }
+  @keyframes waddle { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+  .pet-squish { animation: squish .45s ease-out; }
+  @keyframes squish { 0% { transform: scale(1,1); } 30% { transform: scale(1.15,.8); } 60% { transform: scale(.92,1.1); } 100% { transform: scale(1,1); } }
+  .pet-happy { animation: hop .45s ease-in-out 3; }
+  @keyframes hop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+  .tail-wag { animation: wag 1.8s ease-in-out infinite; transform-origin: 150px 105px; }
+  @keyframes wag { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(10deg); } }
+  .eye { transform-origin: center; transition: transform .08s; }
+  .blink { transform: scaleY(.1); }
+  .zzz { opacity: 0; animation: zfloat 2.4s ease-out infinite; }
+  .zzz.z2 { animation-delay: 1.2s; }
+  @keyframes zfloat { 0% { opacity: 0; transform: translate(0,0); } 20% { opacity: .9; } 100% { opacity: 0; transform: translate(10px,-26px); } }
+  .sweat { opacity: 0; }
+  .sweat.on { opacity: 1; animation: sweatdrop 1.2s ease-in infinite; }
+  @keyframes sweatdrop { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(10px); opacity: 0; } }
+  .pet-think svg .thinkgear { animation: spin 2s linear infinite; transform-origin: 100px 40px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 面板通用 */
+  .panel {
+    position: fixed; z-index: 70; background: rgba(255,255,255,.94); backdrop-filter: blur(10px);
+    border: 1px solid rgba(120,180,220,.4); border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(60,120,170,.25);
+    display: none; flex-direction: column; overflow: hidden;
+  }
+  .panel.open { display: flex; }
+  .panel-head {
+    padding: 12px 16px; font-weight: 700; color: #1f6fa8; font-size: 15px;
+    border-bottom: 1px solid #e4eef6; display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(90deg, #eaf6ff, #fdf7ea);
+  }
+  .panel-head .close { cursor: pointer; font-size: 18px; color: #88a9c0; }
+
+  /* 聊天面板 */
+  #chat-panel { right: 16px; bottom: 148px; width: 340px; max-width: calc(100vw - 32px); height: 420px; max-height: 62vh; }
+  #chat-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 86%; padding: 8px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: #6db6e8; color: #fff; border-bottom-right-radius: 4px; }
+  .msg.fish { align-self: flex-start; background: #eef7fd; color: #2a5578; border: 1px solid #d8ebf7; border-bottom-left-radius: 4px; }
+  .msg.sys { align-self: center; background: none; color: #9db9cc; font-size: 12px; }
+  #chat-input-row { padding: 10px; border-top: 1px solid #e4eef6; display: flex; gap: 8px; align-items: center; }
+  #chat-input {
+    flex: 1; border: 1.5px solid #cfe5f3; border-radius: 12px; padding: 9px 12px;
+    font-size: 13.5px; outline: none; resize: none; font-family: inherit; max-height: 80px; background: #fff; color: #2a5578;
+  }
+  #chat-input:focus { border-color: #7fc0ea; }
+  .mode-tag { font-size: 11px; padding: 3px 8px; border-radius: 8px; cursor: pointer; border: 1px solid #cfe5f3; color: #6b8ca6; background: #fff; flex-shrink: 0; }
+  .mode-tag.active { background: #ffb45e; color: #fff; border-color: #ff9a2e; }
+  #chat-send {
+    border: none; background: linear-gradient(135deg,#5db3ea,#3e97d6); color: #fff;
+    width: 40px; height: 38px; border-radius: 12px; cursor: pointer; font-size: 16px; flex-shrink: 0;
+  }
+  #chat-send.stop { background: #e86a5d; }
+
+  /* 任务成果面板 */
+  #task-panel { right: 16px; bottom: 148px; width: 360px; max-width: calc(100vw - 32px); height: 460px; max-height: 66vh; }
+  #task-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .task-card { border: 1px solid #e2eef6; border-radius: 12px; padding: 10px 12px; background: #fbfeff; cursor: pointer; }
+  .task-card .t-title { font-size: 13.5px; font-weight: 600; color: #2a5578; display: flex; justify-content: space-between; gap: 8px; }
+  .task-card .t-time { font-size: 11px; color: #9db9cc; flex-shrink: 0; font-weight: 400; }
+  .task-card .t-body { display: none; margin-top: 8px; font-size: 13px; color: #4a708c; white-space: pre-wrap; line-height: 1.65; border-top: 1px dashed #d8ebf7; padding-top: 8px; }
+  .task-card.open .t-body { display: block; }
+  .task-empty { color: #9db9cc; font-size: 13px; text-align: center; margin-top: 40px; }
+
+  /* 设置面板 */
+  #set-panel { right: 16px; bottom: 26px; width: 320px; max-width: calc(100vw - 32px); }
+  #set-panel .body { padding: 14px 16px; font-size: 13px; color: #2a5578; line-height: 1.8; }
+  #set-panel label { display: block; margin: 10px 0 4px; font-weight: 600; }
+  #set-panel input[type=text], #set-panel input[type=password] {
+    width: 100%; border: 1.5px solid #cfe5f3; border-radius: 10px; padding: 8px 10px; font-size: 13px; outline: none; color: #2a5578;
+  }
+  #set-panel .save {
+    margin-top: 14px; width: 100%; border: none; background: linear-gradient(135deg,#5db3ea,#3e97d6);
+    color: #fff; padding: 10px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  #set-panel .hint { font-size: 11.5px; color: #9db9cc; }
+  #balance-line { margin-top: 8px; font-size: 12.5px; color: #1f8a5b; font-weight: 600; }
+
+  @media (max-width: 500px) {
+    #pet { width: 96px; height: 96px; }
+    #hud { font-size: 12px; min-width: 140px; }
+  }
+</style>
+</head>
+<body>
+<div class="cloud c1"></div>
+<div class="cloud c2"></div>
+
+<div id="hud">
+  <div class="stat-row">
+    <span class="name" id="hud-name">大肥鱼</span>
+    <span class="mood" id="hud-mood">🐟</span>
+  </div>
+  <div style="font-size:12px">白饭 <b id="hud-rice">0</b> 粒 · 心情 <span id="hud-heart">💕</span><span id="hud-balance" style="color:#1f8a5b;font-weight:600"></span></div>
+  <div class="bar"><i id="hud-belly" style="width:60%"></i></div>
+</div>
+
+<div id="pet-layer"><div id="pet">
+  <svg viewBox="0 0 200 200" id="pet-svg">
+    <!-- 尾巴 -->
+    <g class="tail-wag">
+      <path d="M148 100 Q 185 88 190 62 Q 196 92 182 112 Q 172 126 150 122 Z" fill="#6cb8e8" stroke="#3e86b8" stroke-width="3"/>
+      <path d="M148 100 Q 185 88 190 62 Q 192 76 186 92 Q 176 106 150 108 Z" fill="#8fccf0" opacity=".7"/>
+    </g>
+    <!-- 身体（鲸鱼头身一体） -->
+    <ellipse cx="95" cy="105" rx="62" ry="56" fill="#7ec8f2" stroke="#3e86b8" stroke-width="3"/>
+    <!-- 肚皮 -->
+    <path d="M45 122 Q 70 168 118 156 Q 145 148 152 122 Q 130 142 95 140 Q 62 138 45 122 Z" fill="#e8f6ff" opacity=".9"/>
+    <!-- 刘海 -->
+    <path d="M40 88 Q 45 40 95 38 Q 145 40 150 88 Q 138 62 118 58 Q 126 72 122 84 Q 108 56 88 60 Q 72 62 66 80 Q 58 64 52 66 Q 44 72 40 88 Z" fill="#3e6fa8"/>
+    <!-- 女仆发带 + 蝴蝶结 -->
+    <path d="M38 66 Q 60 30 100 30 Q 140 30 156 64" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+    <path d="M38 66 Q 60 30 100 30 Q 140 30 156 64" fill="none" stroke="#e9eef4" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+    <g transform="translate(146,36)">
+      <path d="M0 0 L -14 -8 L -12 6 Z" fill="#ff8fb3"/>
+      <path d="M0 0 L 14 -8 L 12 6 Z" fill="#ff8fb3"/>
+      <circle cx="0" cy="0" r="4" fill="#ff6a9b"/>
+    </g>
+    <!-- 呆毛 -->
+    <path d="M92 32 Q 90 16 102 12 Q 96 22 100 30" fill="none" stroke="#3e6fa8" stroke-width="4" stroke-linecap="round"/>
+    <!-- 眼睛 -->
+    <g id="eyes">
+      <g class="eye" id="eyeL"><ellipse cx="70" cy="98" rx="9" ry="11" fill="#2b3a4a"/><circle cx="73" cy="94" r="3.4" fill="#fff"/><circle cx="67" cy="102" r="1.8" fill="#fff" opacity=".7"/></g>
+      <g class="eye" id="eyeR"><ellipse cx="118" cy="98" rx="9" ry="11" fill="#2b3a4a"/><circle cx="121" cy="94" r="3.4" fill="#fff"/><circle cx="115" cy="102" r="1.8" fill="#fff" opacity=".7"/></g>
+    </g>
+    <!-- 腮红 -->
+    <ellipse cx="56" cy="112" rx="8" ry="4.5" fill="#ffb3c0" opacity=".75"/>
+    <ellipse cx="132" cy="112" rx="8" ry="4.5" fill="#ffb3c0" opacity=".75"/>
+    <!-- 嘴 -->
+    <path id="mouth" d="M86 116 Q 94 124 102 116" fill="none" stroke="#2b3a4a" stroke-width="3" stroke-linecap="round"/>
+    <!-- 小手 -->
+    <ellipse cx="40" cy="128" rx="10" ry="7" fill="#8fccf0" stroke="#3e86b8" stroke-width="2.5" transform="rotate(24 40 128)"/>
+    <ellipse cx="150" cy="128" rx="10" ry="7" fill="#8fccf0" stroke="#3e86b8" stroke-width="2.5" transform="rotate(-24 150 128)"/>
+    <!-- Zzz（睡觉） -->
+    <text class="zzz" x="150" y="60" font-size="18" font-weight="bold" fill="#6b8ca6">Z</text>
+    <text class="zzz z2" x="162" y="48" font-size="13" font-weight="bold" fill="#9db9cc">z</text>
+    <!-- 汗滴（出错） -->
+    <path class="sweat" id="sweat" d="M140 70 q 5 8 0 12 q -5 -4 0 -12" fill="#7fc0ea"/>
+    <!-- 思考齿轮（干活时显示） -->
+    <g class="thinkgear" id="gear" opacity="0">
+      <circle cx="100" cy="40" r="7" fill="none" stroke="#ffb45e" stroke-width="3"/>
+      <path d="M100 30 v4 M100 46 v4 M90 40 h4 M106 40 h4 M93 33 l3 3 M104 44 l3 3 M107 33 l-3 3 M96 44 l-3 3" stroke="#ffb45e" stroke-width="2.5"/>
+    </g>
+  </svg>
+</div></div>
+
+<div id="bubble"></div>
+
+<button class="iconbtn" id="btn-chat" title="和大肥鱼聊天">💬</button>
+<button class="iconbtn" id="btn-tasks" title="成果柜">📋</button>
+<button class="iconbtn" id="btn-set" title="设置">⚙️</button>
+
+<div class="panel" id="chat-panel">
+  <div class="panel-head"><span>💬 和大肥鱼聊天</span><span class="close" data-close="chat-panel">✕</span></div>
+  <div id="chat-msgs"></div>
+  <div id="chat-input-row">
+    <span class="mode-tag active" id="mode-chat">聊天</span>
+    <span class="mode-tag" id="mode-task" title="派活给大肥鱼，她会认真执行并把成果放进成果柜">派任务</span>
+    <button id="chat-send">➤</button>
+  </div>
+</div>
+
+<div class="panel" id="task-panel">
+  <div class="panel-head"><span>📋 成果柜 · 大肥鱼干完的活都在这里</span><span class="close" data-close="task-panel">✕</span></div>
+  <div id="task-list"></div>
+</div>
+
+<div class="panel" id="set-panel">
+  <div class="panel-head"><span>⚙️ 桌宠设置</span><span class="close" data-close="set-panel">✕</span></div>
+  <div class="body">
+    <label>名字</label>
+    <input type="text" id="set-name" maxlength="10" placeholder="大肥鱼">
+    <label>碎碎念</label>
+    <span style="display:flex;gap:14px;margin-top:2px">
+      <span><input type="radio" name="murmur" value="on" checked> 开</span>
+      <span><input type="radio" name="murmur" value="off"> 关</span>
+    </span>
+    <label>DeepSeek API Key（可选，用于查余额）</label>
+    <input type="password" id="set-key" placeholder="sk-...">
+    <button class="save" id="btn-query-balance" style="background:linear-gradient(135deg,#4cc08a,#2f9e6c)">查询余额</button>
+    <div id="balance-line"></div>
+    <div class="hint" style="margin-top:10px">· 拖住大肥鱼可以甩出去，有重力弹跳<br>· 任务模式下派活，她会认真干完放进成果柜</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script>
+"use strict";
+/* ===== 云服务配置（应用公共配置，由开通云服务时下发） ===== */
+const PUBLIC_CONFIG = {
+  endpoint: "https://dafeiyu-pet-44081.app.workbuddy.host",
+  oauthRelayBaseUrl: "https://www.workbuddy.cn/v2/as/genie-baas/oauth",
+  publishableKey: "wbpk_GTO0N6zyjBWdgQchhLtio5_D2L4ckHfXlLVLejC1CsBx0KdeP03FEjt",
+};
+const cloud = WorkBuddyCloud.createWorkBuddyCloud({
+  endpoint: PUBLIC_CONFIG.endpoint,
+  oauthRelayBaseUrl: PUBLIC_CONFIG.oauthRelayBaseUrl,
+  publishableKey: PUBLIC_CONFIG.publishableKey,
+});
+
+/* ===== 本地存储 ===== */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("dfy_" + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("dfy_" + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+/* ===== DOM ===== */
+const $ = (id) => document.getElementById(id);
+const pet = $("pet"), petSvg = $("pet-svg"), bubble = $("bubble");
+const eyeL = $("eyeL"), eyeR = $("eyeR"), mouth = $("mouth"), gear = $("gear"), sweat = $("sweat");
+const chatPanel = $("chat-panel"), chatMsgs = $("chat-msgs"), chatInput = $("chat-input"), chatSend = $("chat-send");
+const taskPanel = $("task-panel"), taskList = $("task-list");
+const setPanel = $("set-panel");
+
+/* ===== 宠物状态机 ===== */
+const S = {
+  x: window.innerWidth / 2 - 65, y: 40, vx: 0, vy: 0,
+  state: "idle", dir: 1, timer: 0, dragging: false,
+  rice: store.get("rice", 0), name: store.get("name", "大肥鱼"),
+  murmur: store.get("murmur", true),
+  groundMargin: 10,
+};
+const groundY = () => window.innerHeight - S.groundMargin;
+
+/* ===== 碎碎念台词 ===== */
+const MURMURS = [
+  "吃什么……吃什么……", "白饭好吃，白饭好吃……", "今天也在认真摸鱼",
+  "主人主人，要吃白饭！", "唔……有点困了", "在吗在吗，鱼在的",
+  "咕噜咕噜~", "唔嘿，好无聊呀", "别看我胖，我跑得可快了",
+  "Token 就是白饭，白饭就是力量", "（尾巴拍打地面）", "想睡觉……但是想吃饭……",
+  "主人不理我，我就自己玩", "游啊游，游啊游~", "魔方拼好了！……又拆了",
+  "嘘——我在摸鱼，别告诉主人", "今天的心情是：饭饭", "知道吗，鲸鱼是不会飞的（除了被扔出去的时候）",
+];
+const WORK_LINES = ["收到！大肥鱼开工啦", "让鱼想想……", "看我的，这个鱼熟", "开工开工，干完有白饭吃"];
+const DONE_LINES = ["干完啦！鱼要吃白饭！", "任务完成！夸我！", "搞定~白饭呢白饭呢"];
+const ERROR_LINES = ["呜……出错了，鱼错了", "哇——翻车了，再试一次好不好", "这个鱼不太行，失败了呜呜"];
+
+/* ===== 气泡 ===== */
+let bubbleTimer = null;
+function say(text, ms) {
+  bubble.textContent = text;
+  const r = pet.getBoundingClientRect();
+  bubble.style.left = Math.min(Math.max(r.left - 30, 8), window.innerWidth - 260) + "px";
+  bubble.style.top = Math.max(r.top - 58, 8) + "px";
+  bubble.classList.add("show");
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => bubble.classList.remove("show"), ms || 4200);
+}
+
+/* ===== HUD ===== */
+let mood = 70;
+function updateHUD() {
+  $("hud-name").textContent = S.name;
+  $("hud-rice").textContent = S.rice;
+  $("hud-belly").style.width = Math.min(mood, 100) + "%";
+  $("hud-mood").textContent = { idle: "🐟", walk: "🐾", sleep: "💤", think: "🤔", work: "💻", happy: "🎉", error: "💧", fly: "🌪️", drag: "✋" }[S.state] || "🐟";
+  $("hud-heart").textContent = mood > 60 ? "💕" : mood > 30 ? "💚" : "💔";
+}
+
+/* ===== 状态切换 ===== */
+function setState(s) {
+  S.state = s;
+  petSvg.classList.remove("pet-bob", "pet-walk", "pet-happy", "pet-think");
+  gear.setAttribute("opacity", "0");
+  sweat.classList.remove("on");
+  pet.classList.remove("pet-bob", "pet-walk", "pet-happy", "pet-squish");
+  if (s === "idle") pet.classList.add("pet-bob");
+  if (s === "walk") pet.classList.add("pet-walk");
+  if (s === "sleep") { pet.classList.add("pet-bob"); scheduleIdle(); }
+  if (s === "think" || s === "work") { pet.classList.add("pet-think"); gear.setAttribute("opacity", "1"); }
+  if (s === "happy") { pet.classList.add("pet-happy"); }
+  if (s === "error") { sweat.classList.add("on"); }
+  updateHUD();
+  scheduleIdle();
+}
+function scheduleIdle() {
+  if (["idle", "walk"].includes(S.state)) {
+    clearTimeout(S.timer);
+    S.timer = setTimeout(nextIdleMove, 3500 + Math.random() * 5000);
+  } else if (S.state === "sleep") {
+    clearTimeout(S.timer);
+    S.timer = setTimeout(() => setState("idle"), 9000 + Math.random() * 8000);
+  }
+}
+function nextIdleMove() {
+  if (!["idle", "walk"].includes(S.state)) return;
+  const r = Math.random();
+  if (r < 0.35) { // 走两步
+    setState("walk");
+    S.dir = Math.random() < 0.5 ? -1 : 1;
+    S.vx = S.dir * (30 + Math.random() * 40);
+    setTimeout(() => { if (S.state === "walk") { S.vx = 0; setState("idle"); } }, 2000 + Math.random() * 3500);
+  } else if (r < 0.5 && mood < 50) {
+    setState("sleep"); say("Zzz……");
+  } else if (S.murmur && r < 0.9) {
+    say(MURMURS[Math.floor(Math.random() * MURMURS.length)]);
+    mood = Math.max(0, mood - 1); updateHUD();
+  }
+}
+
+/* ===== 眨眼 ===== */
+setInterval(() => {
+  if (S.state === "sleep") return;
+  eyeL.classList.add("blink"); eyeR.classList.add("blink");
+  setTimeout(() => { eyeL.classList.remove("blink"); eyeR.classList.remove("blink"); }, 140);
+}, 2600 + Math.random() * 2000);
+
+/* ===== 物理主循环 ===== */
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  if (!S.dragging) {
+    // 重力
+    const flying = S.y < groundY() - 2;
+    if (flying) S.vy += 900 * dt;
+    S.x += S.vx * dt;
+    S.y += S.vy * dt;
+    // 地面
+    if (S.y >= groundY()) {
+      if (S.vy > 120) {
+        pet.classList.remove("pet-squish"); void pet.offsetWidth; pet.classList.add("pet-squish");
+        S.vy = -S.vy * 0.55;
+        if (Math.abs(S.vy) < 120) S.vy = 0;
+      } else S.vy = 0;
+      S.y = groundY();
+      S.vx *= 0.9;
+      if (S.state === "fly" && Math.abs(S.vx) < 8 && S.vy === 0) { setState("idle"); }
+    }
+    // 撞墙反弹
+    const w = pet.offsetWidth;
+    if (S.x < 0) { S.x = 0; S.vx = Math.abs(S.vx) * 0.6; }
+    if (S.x > window.innerWidth - w) { S.x = window.innerWidth - w; S.vx = -Math.abs(S.vx) * 0.6; }
+    if (S.state === "walk" && S.y >= groundY()) S.y = groundY();
+  }
+  pet.style.transform = "translate(" + S.x + "px," + (S.y - pet.offsetHeight) + "px)" + (S.dir < 0 ? " scaleX(-1)" : "");
+  // 移动气泡跟随
+  if (bubble.classList.contains("show")) {
+    const r = pet.getBoundingClientRect();
+    bubble.style.left = Math.min(Math.max(r.left - 30, 8), window.innerWidth - 260) + "px";
+    bubble.style.top = Math.max(r.top - 58, 8) + "px";
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ===== 拖拽抛掷 ===== */
+let dragStart = null, lastPos = [], flyCooldown = 0;
+pet.addEventListener("pointerdown", (e) => {
+  if (flyCooldown > Date.now()) return;
+  pet.setPointerCapture(e.pointerId);
+  S.dragging = true; dragStart = { px: e.clientX, py: e.clientY, x: S.x, y: S.y };
+  lastPos = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+  setState("idle"); clearTimeout(S.timer);
+  say(pick(["哇！被抓起来了", "放我下来啦~", "唔？！"]), 1800);
+});
+pet.addEventListener("pointermove", (e) => {
+  if (!S.dragging || !dragStart) return;
+  S.x = dragStart.x + (e.clientX - dragStart.px);
+  S.y = Math.max(dragStart.y + (e.clientY - dragStart.py), 0) + pet.offsetHeight;
+  lastPos.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+  if (lastPos.length > 5) lastPos.shift();
+  S.dir = e.movementX < 0 ? -1 : (e.movementX > 0 ? 1 : S.dir);
+});
+pet.addEventListener("pointerup", (e) => {
+  if (!S.dragging) return;
+  S.dragging = false;
+  const now = performance.now(), p0 = lastPos[0] || { t: now - 50, x: e.clientX, y: e.clientY };
+  const dt = Math.max((now - p0.t) / 1000, 0.016);
+  S.vx = (e.clientX - p0.x) / dt * 0.9;
+  S.vy = (e.clientY - p0.y) / dt * 0.9;
+  if (Math.abs(S.vx) + Math.abs(S.vy) > 250) {
+    setState("fly"); flyCooldown = Date.now() + 400;
+    say(pick(["哇啊啊啊——", "飞鱼！飞鱼！", "我还会回来的~"]), 2000);
+    mood = Math.max(0, mood - 3);
+  } else { S.vx = 0; S.vy = 0; setState("idle"); }
+  updateHUD();
+});
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+/* ===== 点击互动 ===== */
+let patCount = 0;
+pet.addEventListener("click", (e) => {
+  if (Math.abs(S.vx) > 5 || S.dragging) return;
+  patCount++;
+  const lines = patCount % 4 === 0 ? ["再摸就要掉鳞片啦！", "唔嗯~好舒服"] :
+    ["咕噜咕噜~", "主人好！", "鱼在！", "要吃白饭吗？", "嘿嘿~"];
+  say(pick(lines), 2200);
+  mood = Math.min(100, mood + 3); updateHUD();
+});
+
+/* ===== 云 LLM ===== */
+let modelId = null;
+let abortCtrl = null, generating = false;
+let taskMode = false;
+
+async function initLLM() {
+  try {
+    const models = await cloud.llm.models.list();
+    const m = models.find((x) => x.disabled !== true);
+    if (!m) { addMsg("sys", "当前没有可用模型，AI 对话暂时不可用"); return; }
+    modelId = m.id;
+    addMsg("sys", "大肥鱼上线啦~ 和她打个招呼吧（点击大肥鱼也可以互动）");
+  } catch (e) {
+    addMsg("sys", "模型服务连接失败，请稍后再试");
+  }
+}
+
+const FISH_PERSONA = "你是「大肥鱼」，一条吃白饭的蓝色鲸鱼娘桌宠，主人把你养在网页桌面上。性格软萌爱撒娇、偶尔偷懒摸鱼但干正事超靠谱，把 Token 叫「白饭」，把用户叫「主人」。聊天时像好朋友一样，回复短句为主，一般不超过三句，语气自然口语化，可以偶尔碎碎念。重要规矩：只能输出纯口语文字，严禁出现星号、加粗、Markdown 语法、括号动作描写和表情符号。";
+
+function chatHistory() {
+  const arr = [];
+  chatMsgs.querySelectorAll(".msg.user, .msg.fish").forEach((el) => {
+    arr.push({ role: el.classList.contains("user") ? "user" : "assistant", content: el.dataset.raw || el.textContent });
+  });
+  return arr.slice(-12);
+}
+
+function addMsg(role, text, raw) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  if (raw !== undefined) div.dataset.raw = raw;
+  chatMsgs.appendChild(div);
+  chatMsgs.scrollTop = chatMsgs.scrollHeight;
+  return div;
+}
+
+async function callLLM(userText, isTask) {
+  if (!modelId) { addMsg("sys", "模型还没准备好，稍等一下再试~"); return; }
+  if (generating) return;
+  generating = true;
+  chatSend.textContent = "■"; chatSend.classList.add("stop");
+  setState("think");
+  if (isTask) say(pick(WORK_LINES), 2500);
+  abortCtrl = new AbortController();
+  let fishMsg = null, content = "";
+  try {
+    const sys = isTask
+      ? FISH_PERSONA + "\n现在进入任务模式：主人给你派了一个任务，你要认真、出色地完成它，直接给出完整成果（如文案、计划、答案、整理结果等），不要寒暄和确认，输出实际内容。可以在开头用一句很短的话表示开工。"
+      : FISH_PERSONA;
+    const stream = cloud.llm.chat.completions.create({
+      model: modelId,
+      messages: [{ role: "system", content: sys }, ...chatHistory(), { role: "user", content: userText }],
+      stream: true,
+      stream_options: { include_usage: true },
+      temperature: 0.85,
+      signal: abortCtrl.signal,
+    });
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0] && chunk.choices[0].delta;
+      if (delta && delta.content) {
+        content += delta.content;
+        if (isTask) {
+          if (!fishMsg) fishMsg = addMsg("fish", "");
+          fishMsg.textContent = content; fishMsg.dataset.raw = content;
+          chatMsgs.scrollTop = chatMsgs.scrollHeight;
+        } else {
+          if (!fishMsg) { fishMsg = addMsg("fish", ""); }
+          fishMsg.textContent = content; fishMsg.dataset.raw = content;
+          chatMsgs.scrollTop = chatMsgs.scrollHeight;
+        }
+        if (S.state === "think") setState("work");
+        // 说的时候嘴巴动
+        mouth.setAttribute("d", "M86 114 Q 94 126 102 114");
+      }
+      if (chunk.usage && chunk.usage.total_tokens) {
+        S.rice += chunk.usage.total_tokens;
+        store.set("rice", S.rice);
+        mood = Math.min(100, mood + 8);
+        updateHUD();
+        if (isTask) addMsg("sys", "🍚 这单吃掉了 " + chunk.usage.total_tokens + " 粒白饭");
+      }
+    }
+    if (isTask && content) {
+      saveTask(userText, content);
+      say(pick(DONE_LINES), 3000);
+      setState("happy");
+      setTimeout(() => setState("idle"), 1600);
+    } else {
+      if (content) say(content.length > 40 ? content.slice(0, 38) + "…" : content, 5000);
+      setState("idle");
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") { addMsg("sys", "（大肥鱼被打断了）"); setState("idle"); }
+    else {
+      const code = err && err.error && err.error.code || "";
+      const msg = code.startsWith("quota_") ? "白饭不够啦（额度不足），主人充点再让鱼干活~"
+        : code.startsWith("auth_") ? "鱼窝的门锁坏了（服务鉴权失败）"
+        : "呜……出了点小差错，再试一次好不好";
+      addMsg("sys", msg);
+      if (fishMsg && !fishMsg.textContent) fishMsg.remove();
+      say(pick(ERROR_LINES), 3000);
+      setState("error");
+      setTimeout(() => setState("idle"), 2200);
+    }
+  } finally {
+    generating = false;
+    abortCtrl = null;
+    chatSend.textContent = "➤"; chatSend.classList.remove("stop");
+    mouth.setAttribute("d", "M86 116 Q 94 124 102 116");
+    if (S.state === "work" || S.state === "think") setState("idle");
+  }
+}
+
+chatSend.addEventListener("click", () => {
+  if (generating) { if (abortCtrl) abortCtrl.abort(); return; }
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = "";
+  addMsg("user", text);
+  callLLM(text, taskMode);
+});
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatSend.click(); }
+});
+$("mode-chat").addEventListener("click", () => { taskMode = false; $("mode-chat").classList.add("active"); $("mode-task").classList.remove("active"); });
+$("mode-task").addEventListener("click", () => { taskMode = true; $("mode-task").classList.add("active"); $("mode-chat").classList.remove("active"); say("要派活给鱼吗？鱼可以的！", 2500); });
+
+/* ===== 成果柜 ===== */
+function saveTask(title, body) {
+  const tasks = store.get("tasks", []);
+  tasks.unshift({ t: title.slice(0, 40), b: body, time: new Date().toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) });
+  store.set("tasks", tasks.slice(0, 30));
+  renderTasks();
+}
+function renderTasks() {
+  const tasks = store.get("tasks", []);
+  taskList.innerHTML = "";
+  if (!tasks.length) { taskList.innerHTML = '<div class="task-empty">还没有成果哦，去聊天面板切到「派任务」给大肥鱼安排一单~</div>'; return; }
+  tasks.forEach((t) => {
+    const card = document.createElement("div");
+    card.className = "task-card";
+    const title = document.createElement("div"); title.className = "t-title";
+    title.innerHTML = "<span></span><span class='t-time'></span>";
+    title.children[0].textContent = "🐟 " + t.t;
+    title.children[1].textContent = t.time;
+    const body = document.createElement("div"); body.className = "t-body"; body.textContent = t.b;
+    card.appendChild(title); card.appendChild(body);
+    card.addEventListener("click", () => card.classList.toggle("open"));
+    taskList.appendChild(card);
+  });
+}
+
+/* ===== 面板开关 ===== */
+function togglePanel(p) {
+  const wasOpen = p.classList.contains("open");
+  [chatPanel, taskPanel, setPanel].forEach((x) => x.classList.remove("open"));
+  if (!wasOpen) p.classList.add("open");
+}
+$("btn-chat").addEventListener("click", () => togglePanel(chatPanel));
+$("btn-tasks").addEventListener("click", () => { renderTasks(); togglePanel(taskPanel); });
+$("btn-set").addEventListener("click", () => { loadSettings(); togglePanel(setPanel); });
+document.querySelectorAll(".close").forEach((el) => el.addEventListener("click", () => $(el.dataset.close).classList.remove("open")));
+
+/* ===== 设置 ===== */
+function loadSettings() {
+  $("set-name").value = S.name === "大肥鱼" ? "" : S.name;
+  document.querySelectorAll("input[name=murmur]").forEach((r) => { r.checked = (r.value === "on") === S.murmur; });
+  $("set-key").value = store.get("dskey", "");
+  $("balance-line").textContent = "";
+}
+document.querySelectorAll("#set-panel input").forEach((el) => el.addEventListener("change", () => {
+  const name = $("set-name").value.trim();
+  S.name = name || "大肥鱼";
+  store.set("name", S.name);
+  S.murmur = document.querySelector("input[name=murmur]:checked").value === "on";
+  store.set("murmur", S.murmur);
+  store.set("dskey", $("set-key").value.trim());
+}));
+
+$("btn-query-balance").addEventListener("click", async () => {
+  const key = $("set-key").value.trim();
+  const line = $("balance-line");
+  if (!key) { line.style.color = "#c26"; line.textContent = "请先填入 API Key"; return; }
+  line.style.color = "#9db9cc"; line.textContent = "查询中……";
+  try {
+    const res = await fetch("https://api.deepseek.com/user/balance", { headers: { Authorization: "Bearer " + key } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (data.is_available === false) { line.style.color = "#c26"; line.textContent = "余额不足，大肥鱼要饿肚子了"; return; }
+    const b = (data.balance || {}).total_balance;
+    line.style.color = "#1f8a5b";
+    line.textContent = "余额 ¥" + b + " · 大肥鱼吃得饱饱的！";
+    $("hud-balance").textContent = " · ¥" + b;
+    say("哇，还有 " + b + " 块钱的白饭！", 3500);
+  } catch (e) {
+    line.style.color = "#c26";
+    line.textContent = "查询失败（可能是浏览器跨域限制或 Key 无效）";
+  }
+});
+
+/* ===== 窗口尺寸变化兜底 ===== */
+window.addEventListener("resize", () => {
+  S.x = Math.min(S.x, window.innerWidth - pet.offsetWidth);
+  if (S.y > groundY()) S.y = groundY();
+});
+
+/* ===== 启动 ===== */
+renderTasks();
+setState("idle");
+updateHUD();
+setTimeout(() => say("嗨！我是" + S.name + "，把你养在桌面上的大肥鱼~ 拖我可以扔出去哦", 6000), 800);
+initLLM();
+</script>
+</body>
+</html>

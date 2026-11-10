@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body { margin:0; background: repeating-conic-gradient(#ff66cc 0% 25%, #333 0% 50%) 50% / 40px 40px; }
+video { display:block; }
+</style></head>
+<body>
+<video id="v" src="assets/anims/idle_breath.webm" autoplay loop muted></video>
+<script>
+const v = document.getElementById("v");
+v.addEventListener("loadedmetadata", () => {
+  window.__info = { w: v.videoWidth, h: v.videoHeight, dur: v.duration };
+  document.title = "meta";
+});
+</script>
+</body></html>

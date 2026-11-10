@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src *">
+<title>大肥鱼</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: "Microsoft YaHei", sans-serif; cursor: default; }
+  #pet {
+    position: absolute; width: 320px; height: 180px;
+    cursor: grab; touch-action: none; will-change: transform;
+    transition: opacity .2s ease;      /* 贴边休息：淡出 → 偷偷挪位 → 淡入 */
+  }
+  #pet:active { cursor: grabbing; }
+  #pet.pet-ghost { opacity: 0; }
+  .clip {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; opacity: 0; transition: opacity .18s;
+    pointer-events: none;
+  }
+  .clip.on { opacity: 1; }
+  .pet-squish { animation: squish .4s ease-out; }
+  @keyframes squish { 0% { transform: scale(1,1); } 35% { transform: scale(1.12,.85); } 65% { transform: scale(.94,1.08); } 100% { transform: scale(1,1); } }
+  /* 被拎住时的挣扎：激烈扭两下 → 歇一口气 → 再挣，手脚随甩动摆 */
+  #pet.struggle { animation: struggle 1.5s ease-in-out infinite; }
+  @keyframes struggle {
+    0%   { rotate: 0deg;  translate: 0 0; }
+    8%   { rotate: -8deg; translate: -3px 0; }
+    16%  { rotate: 7deg;  translate: 3px 0; }
+    24%  { rotate: -6deg; translate: -2px 1px; }
+    32%  { rotate: 5deg;  translate: 2px -1px; }
+    40%  { rotate: -3deg; translate: -1px 0; }
+    48%  { rotate: 2deg;  translate: 1px 0; }
+    56%, 68% { rotate: 0deg; translate: 0 0; }
+    76%  { rotate: -4deg; translate: -1px 1px; }
+    84%  { rotate: 3deg;  translate: 1px 0; }
+    92%, 100% { rotate: 0deg; translate: 0 0; }
+  }
+  #bubble {
+    position: absolute; max-width: 260px; pointer-events: none;
+    background: rgba(255,255,255,.96); color: #2a5578; border: 1.5px solid #9fd0ec;
+    border-radius: 14px; padding: 8px 12px; font-size: 13.5px; line-height: 1.55;
+    box-shadow: 0 4px 14px rgba(80,140,190,.25); opacity: 0;
+    transform: translateY(6px); transition: opacity .22s, transform .22s;
+    word-break: break-word;
+  }
+  #bubble.show { opacity: 1; transform: translateY(0); }
+  /* 漂浮特效（喂食/爱心） */
+  .fx {
+    position: absolute; pointer-events: none; font-size: 18px;
+    animation: fxup 1.4s ease-out forwards;
+  }
+  /* 喂食：饭团从窗口顶部落进鱼嘴 */
+  .food-drop {
+    position: absolute; pointer-events: none; font-size: 24px; z-index: 30;
+    animation: foodfall 1s cubic-bezier(.5,0,1,.6) forwards;
+  }
+  @keyframes foodfall {
+    from { top: -34px; }
+    to   { top: var(--fy, 120px); }
+  }
+  @keyframes fxup {
+    0% { opacity: 0; transform: translateY(0) scale(.6); }
+    25% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-70px) scale(1.25); }
+  }
+  /* 右键菜单 / 子菜单 */
+  #menu, #submenu {
+    position: fixed; display: none; z-index: 99;
+    background: #fff; border: 1px solid #cfe5f3; border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(60,120,170,.3); padding: 6px; min-width: 158px;
+  }
+  #submenu { max-height: 370px; overflow-y: auto; }
+  #menu div.item, #submenu div.item { padding: 7px 14px; font-size: 13px; color: #2a5578; border-radius: 7px; cursor: pointer; }
+  #menu div.item:hover, #submenu div.item:hover { background: #eaf6ff; }
+  #menu .sep, #submenu .sep { height: 1px; background: #e4eef6; margin: 4px 8px; }
+  .has-sub::after { content: "▸"; float: right; color: #9db9cc; margin-left: 10px; }
+  /* 改名字对话框 */
+  #rename-box, #about-box {
+    position: fixed; display: none; z-index: 100;
+    background: #fff; border: 1px solid #cfe5f3; border-radius: 14px;
+    box-shadow: 0 8px 26px rgba(60,120,170,.35); padding: 14px; width: 220px;
+  }
+  #rename-box h3, #about-box h3 { font-size: 14px; color: #1f6fa8; margin-bottom: 10px; }
+  /* 关于 / 版权 */
+  #about-box { width: 236px; }
+  #about-box .line { font-size: 11.5px; color: #4a7899; line-height: 1.75; }
+  #about-box .line b { color: #2a5578; font-weight: normal; display: inline-block; width: 42px; }
+  #about-box .fine { font-size: 10.5px; color: #9db9cc; line-height: 1.6; margin-top: 7px; }
+  #about-box .hr { height: 1px; background: #e4eef6; margin: 9px 0; }
+  #about-box button {
+    width: 100%; border: none; border-radius: 9px; padding: 7px 0;
+    font-size: 13px; cursor: pointer; margin-top: 11px;
+    background: linear-gradient(135deg,#5db3ea,#3e97d6); color: #fff;
+  }
+  #rename-input {
+    width: 100%; border: 1.5px solid #cfe5f3; border-radius: 9px;
+    padding: 7px 10px; font-size: 13px; outline: none; color: #2a5578;
+  }
+  #rename-input:focus { border-color: #7fc0ea; }
+  #rename-box .row { display: flex; gap: 8px; margin-top: 10px; }
+  #rename-box button {
+    flex: 1; border: none; border-radius: 9px; padding: 7px 0;
+    font-size: 13px; cursor: pointer;
+  }
+  #btn-ok { background: linear-gradient(135deg,#5db3ea,#3e97d6); color: #fff; }
+  #btn-cancel { background: #eef3f8; color: #6b8ca6; }
+</style>
+</head>
+<body>
+<div id="pet">
+  <video class="clip" id="vidA" muted playsinline preload="auto"></video>
+  <video class="clip" id="vidB" muted playsinline preload="auto"></video>
+</div>
+<div id="bubble"></div>
+
+<div id="menu">
+  <div class="item has-sub" data-sub="anim">🎬 播放动画</div>
+  <div class="item" data-act="chat">💬 AI 对话</div>
+  <div class="item" data-act="newnote">📝 桌面建便签</div>
+  <div class="item" data-act="weather">☁️ 查看天气</div>
+  <div class="item" data-act="shot">👀 看看屏幕</div>
+  <div class="item" data-act="mousedemo">🖱️ 鼠标绕圈演示</div>
+  <div class="sep"></div>
+  <div class="item" data-act="feed">🍚 喂食</div>
+  <div class="item" data-act="surf">🐟 让鱼去冲浪</div>
+  <div class="item" data-act="throw">🦘 蹦跶一下</div>
+  <div class="item" data-act="perch">🧲 贴边趴一会</div>
+  <div class="item" data-act="sleep" id="mi-sleep">😴 睡一觉</div>
+  <div class="sep"></div>
+  <div class="item has-sub" data-sub="settings">⚙️ 设置</div>
+  <div class="sep"></div>
+  <div class="item" data-act="quit">❌ 退出</div>
+</div>
+<div id="submenu"></div>
+
+<div id="rename-box">
+  <h3>✏️ 给大肥鱼改名字</h3>
+  <input id="rename-input" maxlength="10" placeholder="大肥鱼">
+  <div class="row">
+    <button id="btn-ok">确定</button>
+    <button id="btn-cancel">取消</button>
+  </div>
+</div>
+
+<div id="about-box">
+  <h3>ℹ️ 关于大肥鱼桌宠</h3>
+  <div class="line"><b>版本</b><span id="about-ver">v1.1.5</span></div>
+  <div class="line"><b>开发者</b><span id="about-dev">Dudu Studio</span></div>
+  <div class="hr"></div>
+  <div class="fine" id="about-copy">Copyright © 2026 Dudu Studio. All Rights Reserved.</div>
+  <div class="fine">动画素材：PC2005-cloud/dsh-pet（CC BY-NC-SA 4.0）<br>角色形象：上善无形 / ZipZipPipe 二创</div>
+  <button id="about-close">知道啦</button>
+</div>
+
+<script>
+"use strict";
+window.addEventListener("error", (e) => {
+  try { console.error("Uncaught:", e.message, "at", e.filename + ":" + e.lineno); } catch (err) {}
+});
+
+const pet = document.getElementById("pet");
+const bubble = document.getElementById("bubble");
+const menuEl = document.getElementById("menu");
+const submenuEl = document.getElementById("submenu");
+const vids = [document.getElementById("vidA"), document.getElementById("vidB")];
+
+const APP_W = 340, APP_H = 420;           /* 最小窗口尺寸（缩放 ≤1 时保持不变） */
+const PET_W = 320, PET_H = 180;           /* 动画显示框（16:9） */
+const PAD_X = 10;                          /* 窗口左右留白 */
+const HEADROOM = APP_H - PET_H;           /* 框上方空间（气泡/菜单用） */
+const FOOT_PAD = Math.round(PET_H * 0.08); /* 动画帧脚底到框底留白的兜底值，实际以运行时实测为准 */
+
+/* ===== 角色本体校准：运行时从视频帧实测身体边界 =====
+   动画帧里角色四周有留白：动画框贴到屏幕边 ≠ 身体贴到边，脚底也不在框底。
+   每 300ms 把当前帧画到 canvas 扫 alpha 通道，量出本切片内身体的最左/最右/最低像素：
+   clampX 用身体左右缘贴屏幕边线，footPadCur 用身体最低点（脚）踩地面线。 */
+let footPadCur = FOOT_PAD;
+/* t/l/r/b = 身体在本帧动画框内的上/左/右/下边界（贴边休息时按旋转方向换算落脚点） */
+const bodyBox = { l: 0, r: PET_W, t: 0, b: PET_H - FOOT_PAD };  /* 兜底=整个框（等效旧行为） */
+let measClip = null, measFresh = false;
+const measCanvas = document.createElement("canvas");
+measCanvas.width = PET_W; measCanvas.height = PET_H;
+const measCtx = measCanvas.getContext("2d", { willReadFrequently: true });
+function measureBody() {
+  const v = vids[activeVid];
+  if (!v || v.readyState < 2 || !v.videoWidth) return;
+  if (measClip !== curClipName) { measClip = curClipName; measFresh = false; }
+  measCtx.clearRect(0, 0, PET_W, PET_H);
+  measCtx.drawImage(v, 0, 0, PET_W, PET_H);
+  const d = measCtx.getImageData(0, 0, PET_W, PET_H).data;
+  let l = PET_W, r = -1, b = -1, t = PET_H;
+  for (let y = 0; y < PET_H; y++) {
+    const row = y * PET_W * 4;
+    for (let x = 0; x < PET_W; x++) {
+      if (d[row + x * 4 + 3] > 20) {
+        if (x < l) l = x;
+        if (x > r) r = x;
+        if (y < t) t = y;                  /* 自上而下扫，第一次命中即最高点 */
+        b = y;                             /* 最后命中的行即最低点 */
+      }
+    }
+  }
+  if (r < 0) return;                       /* 这一帧还没画出来（换源瞬间），保留旧值 */
+  if (!measFresh) { bodyBox.l = l; bodyBox.r = r; bodyBox.t = t; bodyBox.b = b; measFresh = true; }
+  else {
+    /* 取切片内的极值：动画任何一帧身体到过的地方都算"身体范围" */
+    if (l < bodyBox.l) bodyBox.l = l;
+    if (r > bodyBox.r) bodyBox.r = r;
+    if (t < bodyBox.t) bodyBox.t = t;
+    if (b > bodyBox.b) bodyBox.b = b;
+  }
+  footPadCur = Math.max(0, PET_H - bodyBox.b);
+}
+setInterval(measureBody, 300);
+
+const screenH = window.screen.availHeight;
+const screenW = window.screen.width;
+const groundY = screenH;                  /* 地面线 = 任务栏顶边 */
+
+/* 当前窗口尺寸与动画框偏移（随缩放变化，applyScale 维护）。
+   坐标语义：S.x = 视觉框左缘（屏幕坐标），S.y = 视觉框底边（屏幕坐标，即脚底线）。
+   窗口跟随缩放变大后，渲染边缘 == 判定边缘，任何大小都能贴边、踩线。 */
+let winW = APP_W, winH = APP_H;
+let fishOffX = (APP_W - PET_W) / 2, fishOffY = APP_H - PET_H;
+
+/* 菜单模式：右键菜单展开期间窗口临时扩容（向上长高），把菜单全部放进鱼身上方的空间——
+   菜单/子菜单永远不盖住鱼；同时窗口整体钳在屏幕内，鱼贴着屏幕边时菜单也不再溢出。
+   offX/offY 是窗口相对「鱼中心锚定位置」的平移量，fishOff 反向补偿，鱼在屏幕上纹丝不动。 */
+let menuMode = null;                       /* null = 普通模式；否则 { offX, offY } */
+let menuSubW = 0, menuSubH = 0;            /* 子菜单最大档尺寸（动画列表，用于扩窗计算） */
+
+const S = {
+  x: screenW / 2,
+  y: groundY + FOOT_PAD,                   /* 启动后由实测 footPadCur 校正 */
+  vx: 0, vy: 0,
+  state: "idle", dir: 1,
+  nextDecide: performance.now() / 1000 + 3,
+  stateUntil: 0,
+  dragging: false, dragOff: [0, 0], hist: [],
+  lifted: false,                           /* 本次拖拽中是否真的把鱼拎离过地面（决定松手能否发射） */
+  struggleTimer: 0,
+  bubbleUntil: 0, scale: 1,
+  talk: false,
+  lastExt: "",
+  throwLock: 0,
+  hopCount: 0,
+  nextIdleFun: performance.now() / 1000 + 10,
+  perch: null,                             /* 贴边休息状态（null = 没在贴边） */
+  perchEdge: "",                           /* 上次趴过哪条边，避免连续重复 */
+  perchAt: performance.now() / 1000 + 35,  /* 到这个时间点还没人动它，就去趴边框 */
+};
+
+/* 设置持久化 */
+const prefs = {
+  name: localStorage.getItem("dfy_name") || "大肥鱼",
+  murmur: localStorage.getItem("dfy_murmur") !== "off",
+  topmost: localStorage.getItem("dfy_top") !== "off",
+  theme: parseInt(localStorage.getItem("dfy_theme") || "0", 10) || 0,
+  scale: parseFloat(localStorage.getItem("dfy_scale") || "1") || 1,
+  perch: localStorage.getItem("dfy_perch") !== "off",   /* 闲置贴边休息 */
+  pomo: localStorage.getItem("dfy_pomo") !== "off",     /* 番茄钟（自动） */
+  hover: localStorage.getItem("dfy_hover") === "on",    /* 悬浮模式：拖哪儿停哪儿 */
+};
+function savePrefs() {
+  localStorage.setItem("dfy_name", prefs.name);
+  localStorage.setItem("dfy_murmur", prefs.murmur ? "on" : "off");
+  localStorage.setItem("dfy_top", prefs.topmost ? "on" : "off");
+  localStorage.setItem("dfy_theme", String(prefs.theme));
+  localStorage.setItem("dfy_scale", String(prefs.scale));
+  localStorage.setItem("dfy_perch", prefs.perch ? "on" : "off");
+  localStorage.setItem("dfy_pomo", prefs.pomo ? "on" : "off");
+  localStorage.setItem("dfy_hover", prefs.hover ? "on" : "off");
+}
+
+const MURMURS = ["吃什么……吃什么……", "白饭好吃，白饭好吃……", "今天也在认真摸鱼",
+  "主人主人，要吃白饭！", "唔……有点困了", "咕噜咕噜~", "别看我胖，我跑得可快了",
+  "Token 就是白饭，白饭就是力量", "游啊游，游啊游~", "嘘——我在摸鱼", "今天的心情是：饭饭"];
+const THINK_LINES = ["让鱼想想……", "唔……让我想想", "鱼在想很厉害的东西"];
+const WORK_LINES = ["鱼在干活！很认真那种", "开工开工~", "这个鱼熟，交给我"];
+const DONE_LINES = ["干完啦！鱼要吃白饭！", "任务完成！夸我！", "搞定~白饭呢白饭呢"];
+const ERROR_LINES = ["呜……翻车了", "这里好像有点问题……", "鱼错了，鱼改"];
+const THROW_LINES = ["哇啊啊啊——", "飞鱼！飞鱼！", "我还会回来的~"];
+const LAUNCH_LINES = ["火箭鱼，发射！", "目标：桌面顶端！", "大肥鱼，来喽！"];
+const HOP_LINES = ["蹦蹦跳跳~", "嘿咻嘿咻！", "跳跳鱼上线！", "蹦跶~蹦跶~", "小碎步前进！"];
+const GRAB_LINES = ["哇！被抓起来了", "放我下来啦~", "唔？！"];
+const STRUGGLE_LINES = ["放我下来！", "挣不脱……哼！", "手脚都不听使唤啦——", "救命呀——有鱼绑架！", "别拎我！我很沉的！", "再不放手我要咬人了哦"];
+const PAT_LINES = ["咕噜咕噜~", "主人好！", "要吃白饭吗？", "嘿嘿~"];
+const FEED_LINES = ["哇！谢谢主人！", "开吃开吃……好幸福", "唔嘛唔嘛~真香", "还想要！还想要！", "这也太好吃了吧！", "吃饱饱才有力气游泳~"];
+const WAKE_LINES = ["唔……被叫醒了", "再睡五分钟嘛……", "醒了醒了！有什么吩咐？"];
+/* 心情冷漠时的话（心情系统：<18 分进入「冷漠」） */
+const COLD_LINES = ["哼，鱼才不想理你", "……（冷漠地游过）", "有事吗？没事别烦鱼", "好久都没人理鱼了，哼", "主人的白饭呢？没有。哼。"];
+/* 番茄钟：人离开电脑 5 分钟以上 = 摸鱼/走开，冒泡吐槽 */
+const SLACK_LINES = ["咕噜咕噜……主人是不是在摸鱼呀？", "（冒泡）主人去哪儿了呀……", "别以为鱼看不见哦，人都不在座位上~",
+  "摸鱼可以，别被老板抓到哦", "鱼在认真监工呢，主人快回来干活~"];
+const CREDIT_TEXT = "动画素材: PC2005-cloud/dsh-pet (CC BY-NC-SA 4.0，禁商用) · 角色形象: 上善无形 / ZipZipPipe 二创";
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+/* ===== 心情系统（自动）=====
+   心情 0~100：>=70 开心、>=40 一般、>=18 无聊、<18 冷漠。
+   规则：每次互动（点击/喂食/聊天）涨一点；随时间自然衰减（每小时约 6 点，
+   离线期间也照算——存的是「分数 + 时间戳」，回来先按时间差折算）。
+   冷漠时鱼的碎碎念会变成冷冰冰的语气，再不理它就一直哼唧。 */
+const MOOD_KEY = "dfy_mood";
+const MOOD_DECAY_PER_HOUR = 6;
+function loadMood() {
+  try {
+    const d = JSON.parse(localStorage.getItem(MOOD_KEY) || "null");
+    if (d && Number.isFinite(d.v) && Number.isFinite(d.t)) {
+      const hrs = Math.max(0, (Date.now() - d.t) / 3600000);
+      return Math.max(0, Math.min(100, d.v - hrs * MOOD_DECAY_PER_HOUR));
+    }
+  } catch (e) {}
+  return 80;                                   /* 新朋友默认心情不错 */
+}
+let mood = loadMood();
+let moodColdShown = false;                     /* 「鱼冷漠了」的提示只弹一次 */
+function saveMood() { localStorage.setItem(MOOD_KEY, JSON.stringify({ v: mood, t: Date.now() })); }
+function addMood(n) {
+  const was = mood;
+  mood = Math.max(0, Math.min(100, mood + n));
+  saveMood();
+  refreshMenu();
+  if (mood < 18 && !moodColdShown) {
+    moodColdShown = true;
+    setTimeout(() => say("哼……这么久都不理鱼，鱼冷漠了！", 4600), 1500);
+  }
+  if (was < 18 && mood >= 30) moodColdShown = false;   /* 哄回来了，下次还能再冷战 */
+}
+function moodName() { return mood >= 70 ? "开心" : mood >= 40 ? "一般" : mood >= 18 ? "无聊" : "冷漠"; }
+
+const THEMES = [
+  { name: "经典蓝", filter: "none" },
+  { name: "樱花粉", filter: "hue-rotate(140deg) saturate(1.15) brightness(1.35) contrast(0.92)" },
+  { name: "抹茶绿", filter: "hue-rotate(-90deg) saturate(1.1) brightness(1.12)" },
+  { name: "葡萄紫", filter: "hue-rotate(75deg) saturate(1.25) brightness(1.08)" },
+  { name: "奶咖棕", filter: "hue-rotate(160deg) saturate(0.85) brightness(1.05)" },
+  { name: "天空浅蓝", filter: "saturate(1.15) brightness(1.25) contrast(0.95)" },
+  { name: "香芋紫", filter: "hue-rotate(30deg) saturate(1.1) brightness(1.15)" },
+  { name: "墨鱼黑", filter: "saturate(0.15) brightness(0.72) contrast(1.15)" },
+  { name: "纯粉", filter: "sepia(0.9) hue-rotate(-65deg) saturate(2.8) brightness(1.1)" },
+  { name: "僵尸色", filter: "hue-rotate(-90deg) saturate(0.35) brightness(1.15)" },
+];
+
+/* ===== 官方动画片段引擎 ===== */
+const ANIM_DIR = "assets/anims/";
+let activeVid = 0, curClipName = null;
+
+function playClip(name, opts) {
+  opts = opts || {};
+  const next = vids[1 - activeVid], cur = vids[activeVid];
+  cur.onended = null;
+  curClipName = name;
+  next.loop = !!opts.loop;
+  next.onended = () => {
+    if (opts.then) {
+      playClip(opts.then, { loop: !!opts.thenLoop });
+    } else if (S.state === "special") {
+      setState("idle");
+    }
+  };
+  next.src = ANIM_DIR + name + ".webm";
+  next.currentTime = 0;
+  const p = next.play();
+  if (p && p.catch) p.catch(() => {});
+  next.classList.add("on");
+  cur.classList.remove("on");
+  activeVid = 1 - activeVid;
+}
+
+const IDLE_FUN = ["look_around", "yawn", "sing", "bubble", "bow"];
+const PAT_CLIPS = ["pat_wave", "pat_happy", "bow"];
+
+function setState(st) {
+  S.state = st;
+  /* 挣扎效果：只在被拎住（drag）时，被扔飞（fly）不算 */
+  pet.classList.toggle("struggle", st === "drag");
+  if (S.struggleTimer) { clearInterval(S.struggleTimer); S.struggleTimer = 0; }
+  if (st === "drag") {
+    S.struggleTimer = setInterval(() => say(pick(STRUGGLE_LINES), 1600), 2600);
+  }
+  if (st === "idle") {
+    playClip("idle_breath", { loop: true });
+    S.nextIdleFun = performance.now() / 1000 + 12 + Math.random() * 18;
+  } else if (st === "sleep") {
+    playClip("sleep_start", { then: "sleep_loop", thenLoop: true });
+  } else if (st === "think") {
+    playClip("think", { loop: true });
+  } else if (st === "work") {
+    playClip(Math.random() < 0.4 ? "work_code" : "work", { loop: true });
+  } else if (st === "done") {
+    playClip("done", {});
+  } else if (st === "error") {
+    playClip("error", {});
+  } else if (st === "drag" || st === "fly") {
+    playClip("drag", { loop: true });
+  } else if (st === "hop") {
+    playClip("pat_happy", { loop: true });
+  }
+}
+
+/* 播放一次动画后回待机（菜单点播用） */
+function playOnce(name, line) {
+  if (S.dragging) return;
+  const now = performance.now() / 1000;
+  S.state = "special";
+  S.stateUntil = 0;
+  playClip(name, {});
+  if (line) say(line, 3600);
+}
+
+function applyScale() {
+  if (!Number.isFinite(S.scale)) S.scale = 1;
+  S.scale = Math.max(0.5, Math.min(2.0, S.scale));
+  pet.style.transformOrigin = "center bottom";
+  pet.style.scale = String(S.scale);
+  /* 窗口跟随缩放：保证角色完整可见，可见边缘 == 判定边缘 */
+  winW = Math.max(APP_W, Math.round(PET_W * S.scale) + PAD_X * 2);
+  winH = Math.max(APP_H, Math.round(HEADROOM + PET_H * S.scale));
+  fishOffX = (winW - PET_W) / 2;
+  fishOffY = winH - PET_H;
+  window.dafeiyu.resize(winW, winH);
+}
+function applyTheme() {
+  const t = THEMES[prefs.theme % THEMES.length];
+  pet.style.filter = t.filter;
+  const el = document.getElementById("mi-theme");
+  if (el) el.textContent = "🎨 换个色调（" + t.name + "）";
+}
+S.scale = prefs.scale;
+applyScale();
+applyTheme();
+
+function say(text, ms) {
+  bubble.textContent = text;
+  if (S.perch) {
+    /* 贴边时窗口是按旋转后的身体裁的窄条，气泡单独摆位（上方优先，不行就放下方） */
+    bubble.style.left = Math.max(6, Math.round((winW - 250) / 2)) + "px";
+    bubble.style.top = perchBubbleTop + "px";
+  } else {
+    bubble.style.left = Math.max(8, Math.min(winW / 2 - 60, winW - 270)) + "px";
+    bubble.style.top = Math.max(2, fishOffY - 50) + "px";
+  }
+  bubble.classList.add("show");
+  S.bubbleUntil = performance.now() / 1000 + (ms || 4200) / 1000;
+}
+
+/* 漂浮特效 */
+function fx(chars, n) {
+  const fxLeft = fishOffX + PET_W / 2;
+  const fxTop = fishOffY + PET_H * 0.35;
+  for (let i = 0; i < n; i++) {
+    const el = document.createElement("div");
+    el.className = "fx";
+    el.textContent = chars[Math.floor(Math.random() * chars.length)];
+    el.style.left = (fxLeft - 20 + Math.random() * 60) + "px";
+    el.style.top = (fxTop + Math.random() * 30) + "px";
+    el.style.animationDelay = (i * 0.18) + "s";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2200);
+  }
+}
+
+/* 短距离连跳 */
+/* 连跳起跳：初速随体型缩放（sqrt(scale)），让跳高与跳远都 ∝ 角色大小——
+   以前是固定像素值，放大后相对身体显得"只原地抖一下"。
+   重力恒为 1000，故 h = v²/2000：基准 360~540 → 跳高约 65~146px，水平约 110~300px。
+   HOP_VY_MAX 限制跳高 ≤ ~205px，不超过窗口顶部预留的 240px 头部空间（否则会被窗口裁掉）。 */
+const HOP_VY_BASE = 360, HOP_VY_RAND = 180;
+const HOP_VX_BASE = 170, HOP_VX_RAND = 140;
+const HOP_VY_MAX = 640;
+
+function startHop() {
+  const k = Math.sqrt(Math.max(0.5, Math.min(2.0, S.scale)));
+  S.vy = -Math.min(HOP_VY_MAX, (HOP_VY_BASE + Math.random() * HOP_VY_RAND) * k);
+  S.vx = S.dir * (HOP_VX_BASE + Math.random() * HOP_VX_RAND) * k;
+  S.throwLock = performance.now() + 300;
+}
+
+function decide(now) {
+  const r = Math.random();
+  if (r < 0.4) {
+    /* 走两步：用一次性的待机小动画代替，官方动画自带位移感 */
+    playOnce(pick(["look_around", "sing", "bubble"]));
+    S.nextDecide = now + 4 + Math.random() * 5;
+    return;
+  } else if (r < 0.55) {
+    setState("sleep");
+    S.stateUntil = now + 10 + Math.random() * 10;
+    say("Zzz……", 2500);
+  } else if (mood < 18) {
+    /* 心情冷漠：碎碎念换成冷冰冰的语气，比平时更少开口 */
+    if (Math.random() < 0.55) say(pick(COLD_LINES));
+  } else if (prefs.murmur) {
+    say(pick(MURMURS));
+  }
+  S.nextDecide = now + 4 + Math.random() * 5;
+}
+
+/* ===== 闲置贴边休息：没人搭理的时候，偷偷蹿到屏幕边框上趴一会儿 =====
+   触发：连续 55~95 秒没有任何操作（点击/拖拽/右键/菜单/任务推送），且正处于 idle。
+   落点：随机挑一条边（不会连着挑同一条），贴着边框趴下——
+     上边框：整个倒挂（180°，像蝙蝠吊在天花板）
+     左 / 右边框：打横扒在侧墙上（±90°，脚踩着屏幕边线）
+   不选下边框：鱼平时就趴在地面线上，再贴下边和现在没区别。
+   移动过程对用户隐藏：先原地淡出 → 在看不见的这段时间里把窗口搬/缩/转到位 → 再淡入。
+   人只会看到「鱼不见了，然后它已经在边框上了」，不会看到它横穿大半个屏幕。
+   贴边位置用「视觉包围盒」算：把实测身体范围（bodyBox）按旋转方向换算成
+   “视觉中心 → 脚底那一侧”的距离，所以旋转后是身体真正贴住边框，不是动画框贴。
+   趴 20~45 秒后自动松开：淡出 → 放回那条边的下方 → 交给重力掉回桌面（会弹两下）。 */
+const PERCH_IDLE_MIN = 55, PERCH_IDLE_MAX = 95;   /* 闲置多久才去趴 */
+const PERCH_REST_MIN = 20, PERCH_REST_MAX = 45;   /* 趴多久 */
+const PERCH_FADE = 0.2;                           /* 淡出/淡入用时（秒），与 CSS #pet 的 opacity 过渡一致 */
+const PERCH_MIN_H = 240;                          /* 贴边时窗口最小高度（给气泡留位置） */
+const PERCH_EDGES = ["top", "left", "right"];     /* 可挑的边框：底部排除（鱼本来就待在那儿） */
+const perfNow = () => performance.now() / 1000;
+const PERCH_LINES = ["趴一会儿……", "这个边边好舒服", "唔……靠着边框发呆", "别管鱼，鱼在休息",
+  "边框凉凉的，好舒服~", "缩在这儿，谁也看不见鱼"];
+
+let perchBubbleTop = 6;      /* 贴边时气泡的固定位置（窗口是窄条形，得单独算） */
+
+/* 某条边对应的旋转角、视觉包围盒尺寸、以及"中心 → 脚底那一侧"的距离 */
+function perchBox(edge) {
+  const s = S.scale, cx = PET_W / 2, cy = PET_H / 2;
+  const dL = cx - bodyBox.l, dR = bodyBox.r - cx;
+  const dT = cy - bodyBox.t, dB = bodyBox.b - cy;
+  const side = edge === "left" || edge === "right";
+  return {
+    rot: edge === "top" ? 180 : edge === "left" ? 90 : edge === "right" ? -90 : 0,
+    bw: (side ? Math.max(dT, dB) : Math.max(dL, dR)) * 2 * s,   /* 视觉包围盒宽 */
+    bh: (side ? Math.max(dL, dR) : Math.max(dT, dB)) * 2 * s,   /* 视觉包围盒高 */
+    foot: dB * s,        /* 旋转后脚底永远落在贴边那一侧，四种姿势距离都一样 */
+  };
+}
+
+/* 按贴边姿势重排窗口：窗口刚好装下旋转后的身体，包围盒尽量不出屏 */
+function perchLayout(g, v) {
+  winW = Math.max(APP_W, Math.round(g.bw) + PAD_X * 2);
+  winH = Math.max(PERCH_MIN_H, Math.round(g.bh) + PAD_X * 2);
+  const bx = v.x - g.bw / 2, by = v.y - g.bh / 2;    /* 视觉包围盒左上角（屏幕坐标） */
+  const wx = Math.max(0, Math.min(screenW - winW, Math.round(bx - (winW - g.bw) / 2)));
+  const wy = Math.max(0, Math.min(screenH - winH, Math.round(by - (winH - g.bh) / 2)));
+  const cxWin = bx - wx + g.bw / 2, cyWin = by - wy + g.bh / 2;   /* 视觉中心在窗口内 */
+  fishOffX = cxWin - PET_W / 2;
+  fishOffY = cyWin - PET_H / 2;
+  /* 气泡：优先放身体上方，上方没地方就放下方 */
+  const topInWin = cyWin - g.bh / 2;
+  perchBubbleTop = topInWin >= 66
+    ? Math.round(topInWin - 60)
+    : Math.round(Math.min(winH - 60, cyWin + g.bh / 2 + 8));
+  window.dafeiyu.resize(winW, winH);
+  return { x: cxWin, y: cyWin };
+}
+
+/* 贴边前先切回待机帧并等一拍：bodyBox 是按"当前切片"实测的，
+   如果停在某个带道具的动画（风筝/水枪/雪人）上，量出来的身体范围会大得离谱，
+   贴边位置就会偏出去。统一用 idle_breath 的身体范围来算落点。 */
+let perchPending = false;
+function startPerch(forceEdge) {
+  if (S.perch || S.dragging || perchPending) return;
+  perchPending = true;
+  if (S.state !== "idle") setState("idle");          /* 别在待机帧上重复重播（会打断测量） */
+  setTimeout(() => {
+    perchPending = false;
+    if (S.perch || S.dragging) return;                /* 这一拍里被人抓走了 */
+    if (!measFresh) { S.perchAt = performance.now() / 1000 + 3; return; }  /* 还没量到身体，过会儿再来 */
+    beginPerch(forceEdge);
+  }, 340);
+}
+
+function beginPerch(forceEdge) {
+  if (S.perch || S.dragging) return;
+  const pool = PERCH_EDGES.filter((e) => e !== S.perchEdge);
+  const edge = PERCH_EDGES.indexOf(forceEdge) >= 0 ? forceEdge : pick(pool);
+  const g = perchBox(edge);
+  const halfW = g.bw / 2, halfH = g.bh / 2;
+  const to = { x: 0, y: 0 };
+  if (edge === "top") {
+    to.x = halfW + Math.random() * Math.max(0, screenW - g.bw);
+    to.y = g.foot;
+  } else if (edge === "left") {
+    to.x = g.foot;
+    to.y = halfH + Math.random() * Math.max(0, (screenH - 40) - g.bh);
+  } else {
+    to.x = screenW - g.foot;
+    to.y = halfH + Math.random() * Math.max(0, (screenH - 40) - g.bh);
+  }
+  S.perchEdge = edge;
+  S.perch = { edge, g, to, bc: null, phase: "vanish", t0: 0, until: 0 };
+  S.vx = S.vy = 0;
+  setState("idle");
+  setIgnore(true);                 /* 贴边时窗口比鱼大得多，整窗穿透，别误挡用户的点击 */
+  pet.classList.add("pet-ghost");  /* 先淡出：从这一刻起到落位，人是看不见它的 */
+}
+
+/* 结束贴边。byUser=true（被碰醒 / 关掉开关 / 来任务）→ 立刻归位，保证马上能拖能点；
+   byUser=false（趴够了）→ 先淡出，再悄悄放回地面。 */
+function exitPerch(byUser) {
+  const p = S.perch;
+  if (!p) return;
+  if (p.phase === "vanish") {      /* 还没落位就被叫停：什么都没动过，原地现形即可 */
+    S.perch = null;
+    pet.classList.remove("pet-ghost");
+    S.perchAt = perfNow() + PERCH_IDLE_MIN * 0.6 + Math.random() * (PERCH_IDLE_MAX - PERCH_IDLE_MIN);
+    return;
+  }
+  if (p.phase === "leave") return;
+  if (byUser) { finishExit(); return; }
+  p.phase = "leave";
+  p.t0 = perfNow();
+  pet.classList.add("pet-ghost");  /* 淡出之后才搬窗口，回桌面这段路也看不见 */
+}
+
+/* 归位：从「原来那条边的正下方」淡入，然后交给重力掉回桌面（落地会弹两下）。
+   x 沿用贴边处的视觉中心，所以不会横穿屏幕跑到老远的地方。 */
+function finishExit() {
+  const p = S.perch;
+  if (!p) return;
+  const now = perfNow();
+  const cx = p.to.x, cy = p.to.y;
+  S.perch = null;
+  perchBubbleTop = 6;
+  pet.classList.remove("pet-ghost");
+  pet.style.rotate = "0deg";
+  pet.style.transformOrigin = "center bottom";
+  /* 视觉中心 → 正常布局的 S.x（水平中心）/ S.y（视觉框底边） */
+  S.x = cx;
+  S.y = cy + (PET_H / 2) * S.scale;
+  S.vx = S.vy = 0;
+  applyScale();                 /* 恢复窗口尺寸与动画框偏移 */
+  clampX();
+  const win = getWinPos();
+  window.dafeiyu.move(win.x, win.y);
+  setState("idle");             /* 脚不在地面上 → 下一帧开始自由落体 */
+  setIgnore(false);
+  S.nextDecide = now + 3;
+  /* 重新排队下次贴边，否则刚松开就会立刻又爬上去 */
+  S.perchAt = now + PERCH_IDLE_MIN * 0.6 + Math.random() * (PERCH_IDLE_MAX - PERCH_IDLE_MIN);
+  pet.classList.remove("pet-squish"); void pet.offsetWidth; pet.classList.add("pet-squish");
+}
+
+/* 任何"人在操作"的动作都调用它：重置闲置计时；正在贴边就立刻回来（瞬时归位，不做动画） */
+let lastMoodAt = 0;                          /* 心情加分节流：一分钟最多记一次互动 */
+function markActive() {
+  const now = perfNow();
+  S.perchAt = now + PERCH_IDLE_MIN + Math.random() * (PERCH_IDLE_MAX - PERCH_IDLE_MIN);
+  if (now - lastMoodAt > 60) { lastMoodAt = now; addMood(2); }   /* 被搭理了，心情+2 */
+  if (S.perch) exitPerch(true);
+}
+
+/* ===== 番茄钟模式（自动）=====
+   每 60 秒问一次系统空闲时间（powerMonitor，全局键鼠空闲）：
+   · 连续活跃满 25 分钟 → 提醒主人起来活动，之后要再攒满才提醒；
+   · 空闲 5~45 分钟 → 判定摸鱼/走开，冒泡吐槽一句（鱼在监工）；
+   · 空闲超过 45 分钟 → 当主人不在工位，安静等待，不刷屏。 */
+const POMO_WORK = 25 * 60, POMO_SLACK = 5 * 60, POMO_AWAY = 45 * 60;
+let pomoActive = 0;                        /* 累计活跃秒数 */
+let pomoReminded = false;                  /* 本轮 25 分钟是否已经提醒过 */
+let lastSlackTease = 0;                    /* 上次吐槽时间，最少隔 10 分钟一次 */
+let pomoBusy = false;                      /* 防止 async 重入 */
+let sysIdleForTest = null;                 /* 测试钩子：非 null 时代替真实系统空闲秒数 */
+async function pomoTick() {
+  if (pomoBusy) return;
+  pomoBusy = true;
+  try {
+    if (!prefs.pomo || S.dragging) return;
+    let idle = sysIdleForTest !== null ? sysIdleForTest : 0;
+    if (sysIdleForTest === null) {
+      try { idle = Number(await window.dafeiyu.sysIdle()) || 0; } catch (e) { return; }
+    }
+    if (idle < 60) {
+      pomoActive += 60;
+      if (pomoActive >= POMO_WORK && !pomoReminded && S.state !== "sleep" && !S.perch) {
+        pomoReminded = true;
+        playOnce("stretch");
+        say("🍅 主人已经连续用电脑 25 分钟啦！站起来伸个懒腰，鱼帮你盯着屏幕~", 8000);
+        fx(["🍅", "✨"], 4);
+      }
+    } else {
+      if (idle >= POMO_SLACK) {
+        pomoActive = 0;                    /* 离开过就算休息过了 */
+        pomoReminded = false;
+        const t = perfNow();
+        if (idle < POMO_AWAY && t - lastSlackTease > 600 && S.state === "idle" && !S.perch) {
+          lastSlackTease = t;
+          playOnce("bubble");
+          say(pick(SLACK_LINES), 5200);
+        }
+      }
+    }
+  } finally {
+    pomoBusy = false;
+  }
+}
+setInterval(pomoTick, 60000);
+
+/* ===== 天气提醒（自动）=====
+   每天早上 6~10 点之间第一次见到主人时，顺带播报天气 + 出行建议（带不带伞）。
+   一天只说一次（dfy_wdate 记日期）；启动时查一次，之后每 20 分钟补查。 */
+const WKEY = "dfy_wdate";
+let weatherForTest = null;                 /* 测试钩子：非 null 时代替真实天气 IPC */
+function weatherAdvice(r) {
+  const d = r.desc || "", t = Number(r.tempC);
+  if (/雷|暴/.test(d)) return "今天有雷雨⛈️，出门一定记得带伞，别淋成落汤鱼！";
+  if (/雨/.test(d)) return "今天有雨🌧️，出门记得带伞哦~";
+  if (/雪/.test(d)) return "今天下雪❄️，路滑慢点走，多穿一点~";
+  if (Number.isFinite(t) && t >= 32) return "今天 " + Math.round(t) + "°C 好热，多喝水注意防晒☀️";
+  if (Number.isFinite(t) && t <= 5) return "今天只有 " + Math.round(t) + "°C，出门加件外套🧣";
+  return "天气不错，适合出门溜达~";
+}
+async function morningWeather(force) {
+  const h = new Date().getHours();
+  if (!force && (h < 6 || h > 10)) return false;
+  const today = new Date().toDateString();
+  if (localStorage.getItem(WKEY) === today) return false;
+  try {
+    const r = weatherForTest ? await weatherForTest() : await window.dafeiyu.weather();
+    if (r && r.ok) {
+      localStorage.setItem(WKEY, today);
+      say("早安！☁️ " + r.text + "。" + weatherAdvice(r), 12000);
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+setTimeout(() => morningWeather(false), 26000);   /* 避开开机问候，26 秒后再说 */
+setInterval(() => morningWeather(false), 20 * 60 * 1000);
+
+/* 每帧推进：vanish（原地淡出）→ rest（在边框上趴着）→ leave（淡出，然后归位） */
+function updatePerch(now) {
+  const p = S.perch;
+  if (!p) return;
+  if (!p.t0) p.t0 = now;
+
+  if (p.phase === "vanish") {
+    if (now - p.t0 < PERCH_FADE) return;   /* 还在淡出：窗口一动不动，免得露馅 */
+    /* 已经看不见了：窗口尺寸 / 位置 / 旋转一次性摆到位，然后再淡入 */
+    p.bc = perchLayout(p.g, p.to);
+    pet.style.transformOrigin = "center center";   /* 绕框中心转 → 视觉中心不跑位 */
+    pet.style.rotate = p.g.rot + "deg";
+    window.dafeiyu.move(Math.round(p.to.x - p.bc.x), Math.round(p.to.y - p.bc.y));
+    pet.classList.remove("pet-ghost");
+    p.phase = "rest";
+    p.t0 = now;
+    p.until = now + PERCH_REST_MIN + Math.random() * (PERCH_REST_MAX - PERCH_REST_MIN);
+    if (Math.random() < 0.45) {
+      setState("sleep");                   /* 45% 概率直接睡过去 */
+      S.stateUntil = p.until + 1;
+      say("Zzz……", 3200);
+    } else if (Math.random() < 0.8) {
+      say(pick(PERCH_LINES), 6000);
+    }
+    return;
+  }
+
+  if (p.phase === "leave") {
+    if (now - p.t0 >= PERCH_FADE) finishExit();
+    return;
+  }
+
+  /* rest：呼吸浮动只往屏幕内侧收，绝不越出边框（越出去会被屏幕边界裁掉半条鱼） */
+  const bob = -Math.abs(Math.sin(now * 1.7)) * 1.6;
+  let cx = p.to.x, cy = p.to.y;
+  if (p.edge === "top") cy -= bob;
+  else if (p.edge === "left") cx -= bob;
+  else cx += bob;
+  window.dafeiyu.move(Math.round(cx - p.bc.x), Math.round(cy - p.bc.y));
+  if (now > p.until) exitPerch(false);
+}
+
+/* 外部状态（WorkBuddy 技能联动） */
+window.dafeiyu.onExternalState((p) => {
+  const key = p.state + "|" + p.task + "|" + p.ts;
+  if (key === S.lastExt) return;
+  S.lastExt = key;
+  const now = performance.now() / 1000;
+  markActive();                            /* 有任务推送 = 有人用鱼，别在这儿趴着 */
+  if (p.state === "thinking") {
+    setState("think");
+    say(p.task || pick(THINK_LINES), 6000);
+  } else if (p.state === "working") {
+    setState("work"); S.talk = true;
+    say(p.task || p.detail || pick(WORK_LINES), 9000);
+  } else if (p.state === "done") {
+    setState("done"); S.talk = false;
+    say((p.task || "") + " " + pick(DONE_LINES), 6000);
+    fx(["🍚", "✨"], 4);
+  } else if (p.state === "error") {
+    setState("error"); S.talk = false;
+    say((p.detail || p.task || "") + " " + pick(ERROR_LINES), 8000);
+  } else if (p.state === "idle") {
+    if (S.state === "work" || S.state === "think") { setState("idle"); S.talk = false; S.nextDecide = now + 2; }
+  }
+});
+
+/* 拖拽抛掷 */
+pet.addEventListener("pointerdown", (e) => {
+  const b0 = getWinPos();                  /* 贴边解除会改窗口尺寸/位置，先记下旧的 */
+  const wasPerch = !!S.perch;              /* 贴边中被碰到：这一下只负责把它叫醒 */
+  markActive();                            /* 有人在碰鱼：闲置计时清零，贴边中就地解除 */
+  /* 刚归位的这一下不接着拖：窗口尺寸/位置刚换过，拿旧坐标算拖拽偏移会把鱼甩出去 */
+  if (wasPerch) { say(pick(WAKE_LINES), 2000); return; }
+  if (e.button !== 0) return;              /* 只认左键：右键是菜单，不能进入拖拽/发射流程 */
+  if (performance.now() < S.throwLock) return;
+  try { pet.setPointerCapture(e.pointerId); } catch (err) { /* 指针已释放/合成事件时无法捕获，拖拽照常进行 */ }
+  S.dragging = true;
+  S.lifted = false;                        /* 每次按下都重置：没离地就不许发射 */
+  S.hopCount = 0;
+  /* 光标相对 S 的偏移：用切换前的窗口位置换算（屏幕坐标 = 旧窗口 xy + clientXY） */
+  S.dragOff = [b0.x + e.clientX - S.x, b0.y + e.clientY - S.y];
+  S.hist = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+  setState("drag");
+  say(pick(GRAB_LINES), 1800);
+});
+pet.addEventListener("pointermove", (e) => {
+  if (!S.dragging) return;
+  const win = getWinPos();
+  S.x = e.clientX + win.x - S.dragOff[0];
+  S.y = e.clientY + win.y - S.dragOff[1];
+  /* 脚底离开地面线 8px 以上，才算"被拎起来过"——单击、原地蹭都不会置位 */
+  if (S.y - footPadCur < groundY - 8) S.lifted = true;
+  S.hist.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+  if (S.hist.length > 6) S.hist.shift();
+});
+pet.addEventListener("pointerup", (e) => {
+  if (!S.dragging) return;
+  S.dragging = false;
+  markActive();
+  const now = performance.now();
+  const p0 = S.hist[0] || { t: now - 50, x: e.clientX, y: e.clientY };
+  const dt = Math.max((now - p0.t) / 1000, 0.016);
+  S.vx = (e.clientX - p0.x) / dt;
+  S.vy = (e.clientY - p0.y) / dt;
+  /* 底部弹射：以任务栏顶边（groundY = availHeight）为基准线。
+     必须"先拎离地面、再压回线"才发射——否则站立时脚底本来就贴着线（footY == groundY），
+     任何一次单击松手都会被判成压线发射（左键/右键乱发射的根源）。 */
+  const footY = S.y - footPadCur;
+  if (prefs.hover) {
+    /* 悬浮模式：松手即停，拖到哪儿就悬在哪儿，不发射不掉落 */
+    S.vx = S.vy = 0;
+    setState("idle");
+    S.nextDecide = now / 1000 + 1;
+  } else if (S.lifted && footY >= groundY - 2) {
+    setState("fly");
+    playClip("spin", { loop: true }); /* 边飞边转 */
+    S.y = Math.min(S.y, groundY + footPadCur);
+    S.vy = -1600;
+    S.vx = Math.max(-300, Math.min(300, S.vx * 0.15));
+    S.throwLock = performance.now() + 500;
+    say(pick(LAUNCH_LINES), 2400);
+    fx(["🔥", "💨", "✨"], 8);
+  } else if (S.lifted && Math.abs(S.vx) + Math.abs(S.vy) > 260) {
+    setState("fly");
+    S.throwLock = performance.now() + 500;
+    say(pick(THROW_LINES), 2000);
+  } else {
+    S.vx = S.vy = 0;
+    setState("idle");
+    S.nextDecide = now / 1000 + 1;
+  }
+});
+pet.addEventListener("pointercancel", () => {
+  if (!S.dragging) return;
+  S.dragging = false;
+  S.vx = S.vy = 0;
+  setState("idle");
+});
+pet.addEventListener("dblclick", () => {
+  if (S.dragging || S.state === "fly") return;
+  playOnce(pick(PAT_CLIPS), pick(PAT_LINES));
+});
+
+/* ===== 右键菜单与子菜单 ===== */
+let startupOn = false;
+let pcOn = true;
+let surfOn = false, surfInfo = null;
+window.dafeiyu.getStartup().then((v) => { startupOn = v; refreshMenu(); }).catch(() => {});
+window.dafeiyu.pcStatus().then((st) => { pcOn = !!st.enabled; refreshMenu(); }).catch(() => {});
+window.dafeiyu.onPcChanged((v) => { pcOn = !!v; refreshMenu(); });
+window.dafeiyu.surfState().then((st) => { surfOn = !!st.enabled; surfInfo = st; refreshMenu(); }).catch(() => {});
+/* 定时任务提醒：到点冒气泡 + 行个礼 */
+window.dafeiyu.onTaskFire((task) => {
+  markActive();
+  say("⏰ " + (task.message || task.name), 9000);
+  playOnce("bow");
+  fx(["⏰", "✨"], 3);
+});
+
+/* 自主冲浪的过程动作：聊天窗把 EVENT:xxx 剥出来转发到这里，鱼就真的在"看视频/写评论" */
+const SURF_ACTS = {
+  surf_start: { clip: "look_around", loop: true, line: "鱼去冲浪啦～" },
+  fetch_notice: { clip: "look_around", line: "看看有没有人找鱼…" },
+  watching_video: { clip: "sing", loop: true, line: "🐟 看视频中…" },
+  thinking: { clip: "startle", line: "唔…要不要说两句呢" },
+  writing_comment: { clip: "bow", line: "悄悄写评论…" },
+  surf_end: { clip: "stretch", line: "冲浪结束，鱼回来啦～" },
+};
+function handleSurfEvent(ev) {
+  if (ev === "round_end") {                    // 内部信号：本轮彻底结束，收掉循环动画
+    playOnce("stretch", "冲浪结束，鱼回来啦～");
+    return;
+  }
+  const a = SURF_ACTS[ev];
+  if (!a) return;
+  if (S.perch) exitPerch(true);
+  if (S.state === "sleep") setState("idle");
+  markActive();
+  if (a.loop) playClip(a.clip, { loop: true });
+  else playOnce(a.clip, a.line);
+  say(a.line, 4600);
+  addMood(1);
+}
+window.dafeiyu.onSurfEvent(handleSurfEvent);
+window.__surfEmit = handleSurfEvent;           /* 验证脚本用（contextBridge 只读，没法 stub IPC） */
+
+function refreshMenu() {
+  const el = (id) => document.getElementById(id);
+  const murmurEl = el("mi-murmur");
+  if (murmurEl) murmurEl.textContent = "💬 碎碎念：" + (prefs.murmur ? "开" : "关");
+  const topEl = el("mi-top");
+  if (topEl) topEl.textContent = "📌 窗口置顶：" + (prefs.topmost ? "开" : "关");
+  const startEl = el("mi-startup");
+  if (startEl) startEl.textContent = "🚀 开机自启：" + (startupOn ? "开" : "关");
+  const perchEl = el("mi-perch");
+  if (perchEl) perchEl.textContent = "🧲 闲置贴边休息：" + (prefs.perch ? "开" : "关");
+  const pcEl = el("mi-pc");
+  if (pcEl) pcEl.textContent = "🖱️ 电脑操作：" + (pcOn ? "开" : "关");
+  const sleepEl = el("mi-sleep");
+  if (sleepEl) sleepEl.textContent = S.state === "sleep" ? "☀️ 叫醒" : "😴 睡一觉";
+  const pomoEl = el("mi-pomo");
+  if (pomoEl) pomoEl.textContent = "🍅 番茄钟：" + (prefs.pomo ? "开" : "关");
+  const hoverEl = el("mi-hover");
+  if (hoverEl) hoverEl.textContent = "🪁 悬浮模式：" + (prefs.hover ? "开" : "关");
+  const surfEl = el("mi-surf");
+  if (surfEl) {
+    surfEl.textContent = "🌊 自主冲浪：" + (surfOn ? "开" : "关") +
+      (surfOn && surfInfo ? "（每 " + surfInfo.interval + " 分钟）" : "");
+  }
+  const moodEl = el("mi-mood");
+  if (moodEl) moodEl.textContent = "❤️ 心情：" + moodName();
+}
+
+/* 播放动画菜单（官方素材点播） */
+const ANIM_MENU = [
+  ["🍚 吃白饭", "eat_rice"], ["🪙 吃Token", "eat_token"], ["🍦 吃冰淇淋", "eat_icecream"],
+  ["🍡 吃汤圆", "eat_tangyuan"], ["🍱 大口吃零食", "eat_snack"], ["🍲 涮火锅", "eat_hotpot"],
+  ["🙆 超大伸懒腰", "stretch"], ["💃 可爱宅舞", "dance"], ["🕺 摇摆舞", "sway"],
+  ["🌀 原地旋转", "spin"], ["🎀 女仆屈膝礼", "bow"], ["🫧 鲸鱼吐泡泡", "bubble"],
+  ["😮 打瞌睡惊醒", "startle"], ["🎵 悠闲哼歌", "sing"], ["🔫 玩水枪", "watergun"],
+  ["🐱 撸猫", "cat"], ["🪭 摇扇纳凉", "fan"], ["⛄ 堆雪人", "snowman"],
+  ["🪁 放风筝", "kite"], ["🎠 荡秋千", "swing_ride"], ["🐴 骑木马", "horse"],
+  ["🪈 吹笛子", "flute"], ["🎻 拉小提琴", "violin"], ["👀 东张西望", "look_around"],
+  ["🥱 哈欠连天", "yawn"],
+];
+
+function showSub(name, anchor) {
+  submenuEl.innerHTML = "";
+  if (name === "anim") {
+    for (const [label, clip] of ANIM_MENU) {
+      const d = document.createElement("div");
+      d.className = "item";
+      d.dataset.anim = clip;
+      d.textContent = label;
+      submenuEl.appendChild(d);
+    }
+  } else if (name === "settings") {
+    const defs = [
+      ["mood", "mi-mood", "❤️ 心情"],
+      ["theme", "mi-theme", "🎨 换个色调"],
+      ["murmur", "mi-murmur", "💬 碎碎念"],
+      ["pomo", "mi-pomo", "🍅 番茄钟"],
+      ["surf_auto", "mi-surf", "🌊 自主冲浪"],
+      ["hover", "mi-hover", "🪁 悬浮模式"],
+      ["top", "mi-top", "📌 窗口置顶"],
+      ["startup", "mi-startup", "🚀 开机自启"],
+      ["perch_auto", "mi-perch", "🧲 闲置贴边休息"],
+      ["pc", "mi-pc", "🖱️ 电脑操作"],
+      ["tasklist", null, "⏰ 定时任务清单"],
+      ["rename", null, "✏️ 改名字"],
+      ["big", null, "🔍 大一点"],
+      ["small", null, "🔍 小一点"],
+      ["about", null, "ℹ️ 关于 / 版权"],
+      ["credit", null, "ℹ️ 素材署名"],
+    ];
+    for (const [act, id, label] of defs) {
+      const d = document.createElement("div");
+      d.className = "item";
+      d.dataset.act = act;
+      if (id) d.id = id;
+      d.textContent = label;
+      submenuEl.appendChild(d);
+    }
+    refreshMenu();                           /* 行建好后再刷新，心情/番茄钟等才带状态值 */
+    applyTheme();
+  }
+  submenuEl.style.display = "block";
+  const sw2 = submenuEl.offsetWidth, sh2 = submenuEl.offsetHeight;
+  if (menuMode) {
+    /* 菜单模式：子菜单优先放主菜单靠鱼一侧的预留槽位；主菜单摆得太靠左、
+       两侧都放不下时，把主菜单右移腾出槽位（扩窗按并排总量算的，一定装得下） */
+    let ml = parseFloat(menuEl.style.left) || 0;
+    const mw2 = menuEl.offsetWidth;
+    let x = ml - sw2 - 6;
+    if (x < 4 && ml + mw2 + 6 + sw2 > winW - 4) {
+      ml = Math.min(winW - mw2 - 6, Math.max(4 + sw2 + 6, ml));
+      menuEl.style.left = Math.round(ml) + "px";
+      x = ml - sw2 - 6;
+    } else if (x < 4) {
+      x = ml + mw2 + 6;                        /* 左侧放不下、右侧有空间：换到主菜单另一侧 */
+    }
+    x = Math.max(4, Math.min(x, winW - sw2 - 4));
+    submenuEl.style.left = Math.round(x) + "px";
+    submenuEl.style.top = "8px";
+  } else {
+    const r = anchor.getBoundingClientRect();
+    let x = r.left - sw2 - 6;
+    if (x < 4) x = Math.min(r.right + 4, winW - sw2 - 4);
+    submenuEl.style.left = Math.max(4, x) + "px";
+    submenuEl.style.top = Math.max(4, Math.min(r.top, winH - sh2 - 6)) + "px";
+  }
+}
+
+function closeMenus() {
+  menuEl.style.display = "none";
+  submenuEl.style.display = "none";
+  submenuEl.dataset.cur = "";
+  if (menuMode) { menuMode = null; applyScale(); }   /* 窗口恢复成鱼自身的大小 */
+}
+
+/* ===== 菜单模式：扩窗 + 进屏 + 摆位 ===== */
+function enterMenuMode() {
+  const mw = menuEl.offsetWidth, mh = menuEl.offsetHeight;
+  /* 子菜单按最大档（动画列表）测量 */
+  submenuEl.innerHTML = "";
+  for (const [label, clip] of ANIM_MENU) {
+    const d = document.createElement("div");
+    d.className = "item"; d.dataset.anim = clip; d.textContent = label;
+    submenuEl.appendChild(d);
+  }
+  submenuEl.style.display = "block";
+  menuSubW = submenuEl.offsetWidth; menuSubH = submenuEl.offsetHeight;
+  submenuEl.style.display = "none";
+
+  const topPad = 8;
+  /* 高度按整个动画框算（不依赖 bodyBox 实测——它是持续累积的，开菜单瞬间可能没量到最高帧），
+     菜单/子菜单永远悬在鱼框上方，绝不接触鱼身 */
+  winW = Math.max(APP_W, Math.ceil(menuSubW + 6 + mw + 24));
+  winH = Math.max(APP_H, Math.ceil(topPad + Math.max(mh, menuSubH) + 14 + PET_H * S.scale));
+  const baseX = S.x - winW / 2, baseY = S.y - winH;
+  const o = { offX: 0, offY: 0 };
+  if (baseX < 0) o.offX = Math.round(-baseX);
+  else if (baseX + winW > screenW) o.offX = Math.round(screenW - baseX - winW);
+  if (baseY < 0) o.offY = Math.round(-baseY);
+  menuMode = o;
+  fishOffX = (winW - PET_W) / 2 - o.offX;      /* 窗口挪多少，画框反向补多少，鱼不动 */
+  fishOffY = winH - PET_H - o.offY;
+  window.dafeiyu.resize(winW, winH);
+}
+
+function placeMenu() {
+  /* 菜单永远在鱼身上方的扩容区里，水平方向尽量靠鼠标那侧，且整窗已钳在屏幕内 */
+  const mw = menuEl.offsetWidth;
+  let left = 12;
+  if (typeof placeMenu._mx === "number") left = placeMenu._mx - 24;
+  left = Math.max(6, Math.min(left, winW - mw - 6));
+  menuEl.style.left = Math.round(left) + "px";
+  menuEl.style.top = "8px";
+}
+
+window.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  markActive();                            /* 右键也算操作：贴边中就先把鱼放回桌面 */
+  closeMenus();                            /* 上一轮菜单若在，同帧先恢复窗口（不闪烁） */
+  refreshMenu();
+  menuEl.style.display = "block";
+  enterMenuMode();                         /* 窗口扩容：装下鱼 + 菜单 + 子菜单，并整体钳进屏幕 */
+  placeMenu._mx = e.clientX;
+  placeMenu();                             /* 菜单摆在鱼身上方，绝不盖住鱼 */
+});
+window.addEventListener("click", (e) => {
+  if (!menuEl.contains(e.target) && !submenuEl.contains(e.target)) closeMenus();
+});
+
+/* 喂食（手动）：往鱼嘴上方丢一团吃的 → 落进嘴 → 吃掉 → 开心转圈圈。
+   饭团只在窗口里下落（窗口跟随鱼，视觉上就是丢到鱼跟前），不跨屏追踪。 */
+const FEED_FOODS = [
+  { clip: "eat_rice", icon: "🍚", name: "白饭" },
+  { clip: "eat_token", icon: "🪙", name: "Token" },
+  { clip: "eat_snack", icon: "🍱", name: "零食" },
+  { clip: "eat_icecream", icon: "🍦", name: "冰淇淋" },
+  { clip: "eat_tangyuan", icon: "🍡", name: "汤圆" },
+  { clip: "eat_hotpot", icon: "🍲", name: "火锅" },
+];
+let feedBusy = false;
+function feedMe() {
+  if (feedBusy || S.dragging || S.perch) return;   /* 贴边中 markActive 已先把鱼放回来 */
+  feedBusy = true;
+  const food = pick(FEED_FOODS);
+  addMood(15);                               /* 白饭治愈一切 */
+  const el = document.createElement("div");
+  el.className = "food-drop";
+  el.textContent = food.icon;
+  el.style.left = (fishOffX + PET_W / 2 - 12 + (Math.random() * 50 - 25)) + "px";
+  el.style.setProperty("--fy", (fishOffY + PET_H * 0.45) + "px");   /* 落到鱼嘴附近 */
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1150);
+  say("哇！是" + food.name + "！！", 2000);
+  setTimeout(() => {
+    playOnce(food.clip, pick(FEED_LINES));
+    fx([food.icon, "✨", "💕"], 5);
+  }, 1000);
+  setTimeout(() => {
+    if (!S.dragging && !S.perch) {
+      playOnce("spin", "吃饱啦~开心得转圈圈！");
+      fx(["💕", "🎵", "✨"], 4);
+    }
+    feedBusy = false;
+  }, 4600);
+}
+
+function handleAction(act) {
+  const now = performance.now() / 1000;
+  markActive();
+  if (act === "feed") {
+    feedMe();
+  } else if (act === "surf") {
+    closeMenus();
+    if (!pcOn) { say("鱼想上网得先开「电脑操作」：右键鱼 → 设置 → 🖱️ 电脑操作", 4600); return; }
+    window.dafeiyu.surfNow();
+    say("鱼去冲浪啦，看看有没有好玩的~", 3600);
+    fx(["🌊", "✨"], 3);
+  } else if (act === "surf_auto") {
+    if (!surfOn && !pcOn) { say("自主冲浪要用电脑操作能力，先去设置里把「🖱️ 电脑操作」打开~", 4800); return; }
+    window.dafeiyu.surfToggle().then((st) => {
+      surfOn = !!st.enabled; surfInfo = st;
+      refreshMenu();
+      say(surfOn
+        ? "自主冲浪开！每 " + st.interval + " 分钟鱼自己去B站逛逛，深夜会乖乖睡觉，评论要你点头才发"
+        : "自主冲浪关了，鱼就待在桌面上陪你", 4600);
+    }).catch(() => {});
+  } else if (act === "throw") {
+    if (S.dragging) return;
+    S.dir = Math.random() < 0.5 ? -1 : 1;
+    S.hopCount = 3 + Math.floor(Math.random() * 3);
+    setState("hop");
+    startHop();
+    say(pick(HOP_LINES), 2200);
+  } else if (act === "perch") {
+    closeMenus();
+    startPerch();                        /* 菜单里手动点：立刻表演一次贴边 */
+  } else if (act === "perch_auto") {
+    prefs.perch = !prefs.perch; savePrefs(); refreshMenu();
+    if (!prefs.perch && S.perch) exitPerch(true);
+    say(prefs.perch
+      ? "好嘞！没人理鱼的时候，鱼就自己找条边框趴着睡"
+      : "那鱼就老老实实待在桌面上，不乱爬了", 3200);
+  } else if (act === "hover") {
+    prefs.hover = !prefs.hover; savePrefs(); refreshMenu();
+    if (prefs.hover) say("悬浮模式开！把鱼拖到哪儿，松手就停在哪儿，不会掉下来啦~", 4200);
+    else say("悬浮模式关了~鱼悬在半空的话，这就掉回桌面！", 3200);
+  } else if (act === "pomo") {
+    prefs.pomo = !prefs.pomo; savePrefs(); refreshMenu();
+    say(prefs.pomo
+      ? "番茄钟开！鱼会盯着主人，连续干活 25 分钟就催你休息~"
+      : "番茄钟关了，主人自己看着点时间哦", 3600);
+  } else if (act === "mood") {
+    if (mood < 18) say("哼！心情：冷漠（" + Math.round(mood) + "/100）……多陪鱼聊聊天、喂喂饭才好得起来", 6000);
+    else say("心情：" + moodName() + "（" + Math.round(mood) + "/100）" + (mood < 40 ? "，有点无聊了，陪鱼玩玩嘛~" : "，鱼今天状态不错！"), 5000);
+  } else if (act === "sleep") {
+    if (S.state === "sleep") {
+      setState("idle"); S.nextDecide = now + 2;
+      playOnce("startle");
+      say(pick(WAKE_LINES), 2600);
+    } else {
+      setState("sleep"); S.stateUntil = now + 30;
+      say("Zzz……晚安~", 3000);
+    }
+  } else if (act === "theme") {
+    prefs.theme = (prefs.theme + 1) % THEMES.length;
+    savePrefs(); applyTheme();
+    say("换上新色调啦~", 2200);
+  } else if (act === "murmur") {
+    prefs.murmur = !prefs.murmur; savePrefs();
+    say(prefs.murmur ? "碎碎念开！鱼有好多话想说" : "好……鱼闭嘴，安静摸鱼", 2600);
+  } else if (act === "top") {
+    prefs.topmost = !prefs.topmost; savePrefs();
+    window.dafeiyu.setTopmost(prefs.topmost);
+    say(prefs.topmost ? "置顶开着呢，鱼一直在最上面" : "置顶关了，鱼可能被埋起来", 2600);
+  } else if (act === "startup") {
+    window.dafeiyu.toggleStartup(!startupOn).then((v) => {
+      startupOn = v; refreshMenu();
+      say(startupOn ? "以后开机鱼就自己来报到！" : "开机自启关掉了~", 2600);
+    });
+  } else if (act === "rename") {
+    renameInput.value = prefs.name === "大肥鱼" ? "" : prefs.name;
+    renameBox.style.display = "block";
+    renameBox.style.left = Math.max(10, Math.min(winW - renameBox.offsetWidth - 10, 60)) + "px";
+    renameBox.style.top = Math.max(10, winH - renameBox.offsetHeight - 10) + "px";
+    setTimeout(() => renameInput.focus(), 50);
+  } else if (act === "pc") {
+    window.dafeiyu.setPcPerm(!pcOn).then((r) => {
+      pcOn = !!r.enabled; refreshMenu();
+      say(pcOn
+        ? "电脑操作开了！鱼可以帮你动鼠标、敲键盘、看屏幕、读文件啦"
+        : "电脑操作关掉了，鱼只能乖乖待在桌面上", 3200);
+    });
+  } else if (act === "shot") {
+    say("鱼去瞄一眼屏幕……", 2200);
+    window.dafeiyu.pc("screenshot", {}).then((r) => {
+      if (r.ok) say("📷 看到啦！截图存在 " + r.result.path, 7000);
+      else say("呜……截不了屏：" + r.error, 5000);
+    });
+  } else if (act === "mousedemo") {
+    say("看鱼的！让鼠标转个圈~", 2600);
+    window.dafeiyu.pc("mouse_pos", {}).then(async (r) => {
+      if (!r.ok) { say("呜……摸不到鼠标：" + r.error, 5000); return; }
+      const cx = r.result.x, cy = r.result.y, R = 90, N = 28;
+      for (let i = 0; i <= N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        await window.dafeiyu.pc("mouse_move", { x: Math.round(cx + Math.cos(a) * R), y: Math.round(cy + Math.sin(a) * R) });
+        await new Promise((res) => setTimeout(res, 22));
+      }
+      say("转完啦！鼠标还给你~", 2600);
+    });
+  } else if (act === "tasklist") {
+    window.dafeiyu.pc("schedule_list", {}).then((r) => {
+      if (!r.ok) { say("呜……查不了：" + r.error, 5000); return; }
+      if (!r.result.count) { say("现在一个定时任务都没有，在聊天里叫鱼帮你建一个吧~", 6000); return; }
+      const lines = r.result.tasks.map((t) => "「" + t.name + "」" + t.spec + "·" + (t.type === "agent" ? "AI任务" : "提醒")).join("；");
+      say("⏰ 有 " + r.result.count + " 个任务：" + lines, 12000);
+    });
+  } else if (act === "big") {
+    S.scale *= 1.15; applyScale(); savePrefs();
+  } else if (act === "small") {
+    S.scale /= 1.15; applyScale(); savePrefs();
+  } else if (act === "about") {
+    aboutBox.style.display = "block";
+    aboutBox.style.left = Math.max(8, Math.min(winW - aboutBox.offsetWidth - 8, 40)) + "px";
+    aboutBox.style.top = Math.max(8, Math.min(winH - aboutBox.offsetHeight - 8, 60)) + "px";
+    if (window.dafeiyu && window.dafeiyu.appInfo) {
+      window.dafeiyu.appInfo().then((i) => {
+        if (!i) return;
+        if (i.version) aboutVer.textContent = "v" + i.version;
+        if (i.developer) aboutDev.textContent = i.developer;
+        if (i.copyright) aboutCopy.textContent = i.copyright;
+      }).catch(() => {});
+    }
+  } else if (act === "credit") {
+    closeMenus();
+    say(CREDIT_TEXT, 12000);
+  } else if (act === "chat") {
+    window.dafeiyu.openChat();   // 打开/聚焦独立聊天窗口
+    say("聊天窗口来啦~ 按住标题栏随便拖！", 3000);
+  } else if (act === "newnote") {
+    // 直接往桌面放一张便签，验证「写文件」这条链路是通的
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, "0");
+    const name = "大肥鱼便签-" + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + ".txt";
+    say("鱼去桌面放张便签…", 2200);
+    window.dafeiyu.pc("write_file", {
+      path: "桌面/" + name,
+      content: "大肥鱼在 " + d.toLocaleString("zh-CN") + " 留：\n主人记得喝水，白饭要吃饱~\n",
+    }).then((r) => {
+      if (r.ok) say("📝 建好啦：" + r.result.path, 9000);
+      else say("呜……建不了：" + r.error, 7000);
+    });
+  } else if (act === "weather") {
+    say("鱼去瞅瞅外面的天气……", 2500);
+    window.dafeiyu.weather().then((r) => {
+      if (r.ok) say("☁️ " + r.text, 9000);
+      else say("呜……天气服务连不上：" + r.error, 5000);
+    });
+  } else if (act === "quit") {
+    window.close();
+  }
+}
+
+menuEl.addEventListener("click", (e) => {
+  const it = e.target.closest(".item");
+  if (!it) return;
+  if (it.dataset.sub) {
+    const isSame = submenuEl.style.display === "block" && submenuEl.dataset.cur === it.dataset.sub;
+    if (isSame) { submenuEl.style.display = "none"; return; }
+    submenuEl.dataset.cur = it.dataset.sub;
+    showSub(it.dataset.sub, it);
+    return;
+  }
+  if (it.dataset.act) { closeMenus(); handleAction(it.dataset.act); }
+});
+submenuEl.addEventListener("click", (e) => {
+  const it = e.target.closest(".item");
+  if (!it) return;
+  if (it.dataset.anim) { closeMenus(); playOnce(it.dataset.anim); }
+  else if (it.dataset.act) {
+    const act = it.dataset.act;
+    if (act === "big" || act === "small") { closeMenus(); handleAction(act); }  /* 缩放要重排窗口，先收菜单 */
+    else if (act === "theme" || act === "murmur" || act === "pc") {
+      handleAction(act); showSub("settings", menuEl.querySelector('[data-sub="settings"]'));
+    } else { closeMenus(); handleAction(act); }
+  }
+});
+
+/* 改名字对话框 */
+const renameBox = document.getElementById("rename-box"), renameInput = document.getElementById("rename-input");
+document.getElementById("btn-ok").addEventListener("click", () => {
+  const v = renameInput.value.trim();
+  prefs.name = v || "大肥鱼";
+  savePrefs();
+  renameBox.style.display = "none";
+  playOnce("bow", "以后我就是「" + prefs.name + "」啦！请多关照！");
+  fx(["✨", "💕", "✨"], 3);
+});
+document.getElementById("btn-cancel").addEventListener("click", () => {
+  renameBox.style.display = "none";
+});
+renameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-ok").click();
+  if (e.key === "Escape") document.getElementById("btn-cancel").click();
+});
+
+/* 关于 / 版权弹窗 */
+const aboutBox = document.getElementById("about-box"),
+      aboutVer = document.getElementById("about-ver"),
+      aboutDev = document.getElementById("about-dev"),
+      aboutCopy = document.getElementById("about-copy");
+document.getElementById("about-close").addEventListener("click", () => {
+  aboutBox.style.display = "none";
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") aboutBox.style.display = "none";
+});
+/* 启动时就用主进程的真实版本号校正一次（避免和 package.json 走散） */
+if (window.dafeiyu && window.dafeiyu.appInfo) {
+  window.dafeiyu.appInfo().then((i) => {
+    if (i && i.version) aboutVer.textContent = "v" + i.version;
+  }).catch(() => {});
+}
+
+/* ===== 独立聊天窗口联动 =====
+   AI 对话已移到独立的 chat.html 窗口（可自由拖动/调整大小）。
+   聊天窗口在思考/生成时通知这里，让鱼切思考动画 */
+window.dafeiyu.onChatState((st) => {
+  if (st === "think") {
+    markActive();
+    addMood(8);                              /* 主人来聊天了，心情明显变好 */
+    setState("think");
+  } else if (st === "idle") {
+    if (S.state === "think") {
+      setState("idle");
+      S.nextDecide = performance.now() / 1000 + 2;
+    }
+  }
+});
+
+/* 透明区域点击穿透 */
+let ignoring = false;
+function setIgnore(v) {
+  if (v !== ignoring) { ignoring = v; window.dafeiyu.ignoreMouse(v, { forward: true }); }
+}
+window.addEventListener("mousemove", (e) => {
+  if (S.dragging) { setIgnore(false); return; }
+  const overUI = e.target !== document.body && e.target !== document.documentElement;
+  setIgnore(!overUI);
+});
+
+/* 物理与窗口同步 */
+/* 坐标语义：S.x = 视觉框中心 x（渲染缩放 origin 是水平 center，中心是缩放下不变的水平锚点），
+   S.y = 视觉框底边 y（origin 是 bottom，框底同样不变）。
+   左右边界按"角色本体"（measureBody 实测的帧内身体范围，随朝向镜像）计算：
+   身体正好贴住屏幕左右边线，动画框里的留白可以出屏，与缩放无关。 */
+function clampX() {
+  const extL = (PET_W / 2 - bodyBox.l) * S.scale;   /* 中心 → 身体左缘 */
+  const extR = (bodyBox.r - PET_W / 2) * S.scale;   /* 中心 → 身体右缘 */
+  const L = S.dir < 0 ? extR : extL;                /* scaleX(-1) 时左右互换 */
+  const R = S.dir < 0 ? extL : extR;
+  if (S.x - L < 0) { S.x = L; return -1; }                   // 身体左缘贴屏幕左边线
+  if (S.x + R > screenW) { S.x = screenW - R; return 1; }    // 身体右缘贴屏幕右边线
+  return 0;
+}
+function getWinPos() {
+  const o = menuMode || { offX: 0, offY: 0 };
+  return { x: Math.round(S.x - winW / 2 + o.offX), y: Math.round(S.y - winH + o.offY) };
+}
+
+let last = performance.now() / 1000;
+function loop() {
+  const now = performance.now() / 1000;
+  const dt = Math.min(now - last, 0.06);
+  last = now;
+
+  /* NaN 自愈：任何状态值变成非有限数（会传染给窗口坐标、导致主进程崩溃）就地复位 */
+  if (![S.x, S.y, S.vx, S.vy, S.scale].every(Number.isFinite)) {
+    console.error("检测到非法状态值，已复位:", JSON.stringify({ x: S.x, y: S.y, vx: S.vx, vy: S.vy, scale: S.scale }));
+    if (!Number.isFinite(S.scale)) S.scale = 1;
+    S.x = screenW / 2;                       /* S.x 是视觉框中心：真正居中 */
+    clampX();
+    S.y = groundY + footPadCur;
+    S.vx = S.vy = 0;
+    if (S.dragging) S.dragging = false;
+  }
+
+  if (S.perch) {
+    updatePerch(now);                        /* 贴边休息：跳过重力和边界判定，位置自己算 */
+  } else if (!S.dragging && (!prefs.hover || S.state === "hop" || S.state === "fly")) {
+    /* 悬浮模式下 idle 不走物理（悬在原地）；但蹦跶/飞行的瞬时动画仍要落地 */
+    const footY = S.y - footPadCur;          /* 实测的脚底位置（视觉上的脚） */
+    const flying = footY < groundY - 1;
+    if (flying) S.vy += 1000 * dt;
+    S.x += S.vx * dt;
+    S.y += S.vy * dt;
+    const bottom = S.y;                      /* 视觉框底边 */
+    if (bottom >= groundY + footPadCur) {
+      if (S.state === "hop") {
+        /* 连跳落地：不做弹性反弹（否则每次落地要再弹两下才接地，节奏拖沓），
+           压扁一下直接贴地，交给下面 hopCount 分支立刻起跳 */
+        pet.classList.remove("pet-squish"); void pet.offsetWidth; pet.classList.add("pet-squish");
+        S.vy = 0;
+        S.y = groundY + footPadCur;
+      } else if (S.vy > 150) {
+        pet.classList.remove("pet-squish"); void pet.offsetWidth; pet.classList.add("pet-squish");
+        S.vy = -S.vy * 0.55;
+        if (Math.abs(S.vy) < 130) S.vy = 0;
+      } else if (S.vy >= 0) {
+        /* 只有下落/静止时才贴地清速；上升中（发射穿出地面）不许灭火 */
+        S.vy = 0;
+        S.y = groundY + footPadCur;          /* 实测的脚正好踩在地面线上 */
+      }
+      S.vx *= 0.88;
+      if (S.state === "fly" && Math.abs(S.vx) < 10 && S.vy === 0) {
+        setState("idle");
+        S.nextDecide = now + 1;
+      }
+      /* 连跳：落地后如果还有剩余次数，立刻起跳 */
+      if (S.state === "hop" && S.vy === 0) {
+        S.hopCount--;
+        if (S.hopCount > 0) {
+          if (Math.random() < 0.35) S.dir = -S.dir;
+          startHop();
+        } else {
+          setState("idle");
+          S.nextDecide = now + 1;
+        }
+      }
+    }
+    const hit = clampX();
+    if (hit < 0) S.vx = Math.abs(S.vx) * 0.6;
+    else if (hit > 0) S.vx = -Math.abs(S.vx) * 0.6;
+    if (S.y - PET_H * S.scale < 0) { S.y = PET_H * S.scale; S.vy = Math.abs(S.vy) * 0.4; }  /* 视觉框顶不出屏 */
+  } else if (!S.dragging && prefs.hover) {
+    /* 悬浮静止：不走重力，只钳在屏幕内（水平 + 顶部） */
+    const hit = clampX();
+    if (hit < 0) S.vx = Math.abs(S.vx) * 0.6;
+    else if (hit > 0) S.vx = -Math.abs(S.vx) * 0.6;
+    if (S.y - PET_H * S.scale < 0) S.y = PET_H * S.scale;
+  }
+
+  if (S.state === "sleep" && now > S.stateUntil) { setState("idle"); S.nextDecide = now + 2; }
+  if (S.state === "done" || S.state === "error") {
+    /* 一次性状态动画播完由 onended 回 idle；这里做超时兜底 */
+    if (now > S.stateUntil + 12) { setState("idle"); S.nextDecide = now + 2; }
+  }
+  if (!S.perch && S.state === "idle" && now > S.nextIdleFun) {
+    playOnce(pick(IDLE_FUN));
+    S.nextIdleFun = now + 18 + Math.random() * 25;
+  }
+  if (!S.perch && S.state === "idle" && now > S.nextDecide) decide(now);
+  /* 闲置够久且没人在操作 → 游到某条边框上趴一会儿 */
+  if (!S.perch && !S.dragging && prefs.perch && S.state === "idle" && now > S.perchAt) {
+    startPerch();
+    if (S.perch) updatePerch(now);            /* 同一帧把淡出计时跑起来 */
+  }
+  if (bubble.classList.contains("show") && now > S.bubbleUntil) bubble.classList.remove("show");
+
+  if (menuMode) {
+    /* 菜单开着时鱼可能走动：每帧把窗口重新钳进屏幕，fishOff 反向补偿让鱼在屏上不动 */
+    const baseX = S.x - winW / 2, baseY = S.y - winH;
+    menuMode.offX = baseX < 0 ? Math.round(-baseX)
+      : (baseX + winW > screenW ? Math.round(screenW - baseX - winW) : 0);
+    menuMode.offY = baseY < 0 ? Math.round(-baseY) : 0;
+    fishOffX = (winW - PET_W) / 2 - menuMode.offX;
+    fishOffY = winH - PET_H - menuMode.offY;
+  }
+  pet.style.left = fishOffX + "px";
+  pet.style.top = fishOffY + "px";
+  /* 朝向镜像改用 scale 的 x 分量（transform 要留给 .pet-squish 动画，不能长期占用） */
+  pet.style.scale = S.dir < 0 ? (-S.scale + " " + S.scale) : String(S.scale);
+
+  if (!S.perch) {
+    const win = getWinPos();
+    window.dafeiyu.move(win.x, win.y);        /* 贴边时窗口位置由 updatePerch 负责 */
+  }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* 应用置顶偏好 + 启动 */
+window.dafeiyu.setTopmost(prefs.topmost);
+S.x = screenW / 2;                         /* S.x 是视觉框中心：真正居中 */
+clampX();
+setState("idle");
+setTimeout(() => {
+  if (mood < 18) say("……回来了啊。哼，鱼才没有想你。", 6000);   /* 冷漠开场 */
+  else if (mood < 40) say("嗨……是" + prefs.name + "回来啦。有点无聊，陪我玩玩嘛~", 6000);
+  else say("嗨！我是" + prefs.name + "，右键我有好多动画可以点播哦~", 6000);
+}, 800);
+</script>
+</body>
+</html>
