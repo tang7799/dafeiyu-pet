@@ -10,10 +10,13 @@
   body { font-family: "Microsoft YaHei", sans-serif; cursor: default; }
   #pet {
     position: absolute; width: 320px; height: 180px;
-    cursor: grab; touch-action: none; will-change: transform;
+    touch-action: none; will-change: transform;
     transition: opacity .2s ease;      /* 贴边休息：淡出 → 偷偷挪位 → 淡入 */
   }
   #pet:active { cursor: grabbing; }
+  /* 小手只在这两个状态下出现：鼠标在鱼身上/附近（JS 按 bodyBox 实测判定）或正拖着鱼 */
+  body.near-fish { cursor: grab; }
+  body.dragging { cursor: grabbing !important; }
   #pet.pet-ghost { opacity: 0; }
   .clip {
     position: absolute; inset: 0; width: 100%; height: 100%;
@@ -215,6 +218,54 @@ function measureBody() {
   footPadCur = Math.max(0, PET_H - bodyBox.b);
 }
 setInterval(measureBody, 300);
+
+/* ===== 鱼身命中判定：小手 / 抓取 / 右键只在鱼图形本身上生效 =====
+   窗口大部分是透明留白：以前整个动画框都是 grab 区、整窗都能右键，离鱼很远也能抓。
+   两级判定：先用实测身体范围（bodyBox）矩形快速排除，再映射进 320x180 动画帧
+   采样该点的 alpha 通道——只有真的压在鱼形轮廓的不透明像素上才算命中。 */
+const NEAR_PAD = 0;                        /* 矩形预检容差：0 = 不放边缘余量 */
+const lastMouse = { cx: -1, cy: -1, sx: -1, sy: -1 };   /* cx/cy=窗口内，sx/sy=屏幕（鱼会拖着窗口跑，判定用屏幕坐标） */
+function fishRect() {
+  const r = pet.getBoundingClientRect();
+  if (S.perch) return r;                   /* 贴边旋转姿态：直接用整框兜底 */
+  const cx = r.left + r.width / 2, by = r.bottom;
+  const l = cx + (bodyBox.l - PET_W / 2) * S.scale;
+  const rt = cx + (bodyBox.r - PET_W / 2) * S.scale;
+  const t = by - (PET_H - bodyBox.t) * S.scale;
+  const b = by - (PET_H - bodyBox.b) * S.scale;
+  return { left: Math.min(l, rt), right: Math.max(l, rt), top: t, bottom: b };
+}
+function inRect(l, t, r, b, x, y) {
+  return x >= l && x <= r && y >= t && y <= b;
+}
+/* 像素级采样：把窗口内坐标映射回动画帧坐标，读该像素 alpha（帧画布由 measureBody 维护） */
+function onFishPixel(cx, cy) {
+  const r = pet.getBoundingClientRect();
+  const nx = Math.floor((cx - r.left) / r.width * PET_W);
+  const ny = Math.floor((cy - r.top) / r.height * PET_H);
+  if (nx < 0 || ny < 0 || nx >= PET_W || ny >= PET_H) return false;
+  try {
+    if (measClip !== curClipName) measureBody();      /* 刚换过动画切片：先重画再采样 */
+    const fx = S.dir < 0 ? PET_W - 1 - nx : nx;       /* 朝向镜像：采样点跟着翻 */
+    return measCtx.getImageData(fx, ny, 1, 1).data[3] > 20;
+  } catch (e) { return true; }                        /* 帧还没画出来：退回矩形判定 */
+}
+function hitTest(cx, cy) {
+  const r = fishRect();
+  if (!inRect(r.left, r.top, r.right, r.bottom, cx, cy)) return false;
+  if (S.perch) return true;                           /* 贴边旋转姿态：矩形兜底 */
+  return onFishPixel(cx, cy);
+}
+function nearFish(cx, cy) {                /* 事件门控用：传入的窗口内坐标与当前窗口同步，不会过期 */
+  return hitTest(cx, cy);
+}
+function nearFishScreen(sx, sy) {          /* 光标显隐用：窗口会跟着鱼移动，静止鼠标必须按屏幕坐标判 */
+  return hitTest(sx - window.screenX, sy - window.screenY);
+}
+function refreshCursor() {
+  if (S.dragging) return;                  /* 拖拽中保持抓取态，不闪 */
+  document.body.classList.toggle("near-fish", lastMouse.sx >= 0 && nearFishScreen(lastMouse.sx, lastMouse.sy));
+}
 
 const screenH = window.screen.availHeight;
 const screenW = window.screen.width;
@@ -797,6 +848,8 @@ window.dafeiyu.onExternalState((p) => {
 
 /* 拖拽抛掷 */
 pet.addEventListener("pointerdown", (e) => {
+  lastMouse.cx = e.clientX; lastMouse.cy = e.clientY; lastMouse.sx = e.screenX; lastMouse.sy = e.screenY;
+  if (!nearFish(e.clientX, e.clientY)) return;   /* 离鱼远：这一下不抓，也不解除贴边 */
   const b0 = getWinPos();                  /* 贴边解除会改窗口尺寸/位置，先记下旧的 */
   const wasPerch = !!S.perch;              /* 贴边中被碰到：这一下只负责把它叫醒 */
   markActive();                            /* 有人在碰鱼：闲置计时清零，贴边中就地解除 */
@@ -811,8 +864,14 @@ pet.addEventListener("pointerdown", (e) => {
   /* 光标相对 S 的偏移：用切换前的窗口位置换算（屏幕坐标 = 旧窗口 xy + clientXY） */
   S.dragOff = [b0.x + e.clientX - S.x, b0.y + e.clientY - S.y];
   S.hist = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+  document.body.classList.add("dragging");     /* 拖着鱼时全窗显示抓取光标 */
+  document.body.classList.remove("near-fish");
   setState("drag");
   say(pick(GRAB_LINES), 1800);
+});
+window.addEventListener("pointermove", (e) => {
+  lastMouse.cx = e.clientX; lastMouse.cy = e.clientY; lastMouse.sx = e.screenX; lastMouse.sy = e.screenY;
+  refreshCursor();                         /* 鼠标挪进/挪出鱼身：小手跟着显隐 */
 });
 pet.addEventListener("pointermove", (e) => {
   if (!S.dragging) return;
@@ -825,6 +884,7 @@ pet.addEventListener("pointermove", (e) => {
   if (S.hist.length > 6) S.hist.shift();
 });
 pet.addEventListener("pointerup", (e) => {
+  document.body.classList.remove("dragging");
   if (!S.dragging) return;
   S.dragging = false;
   markActive();
@@ -862,13 +922,15 @@ pet.addEventListener("pointerup", (e) => {
   }
 });
 pet.addEventListener("pointercancel", () => {
+  document.body.classList.remove("dragging");
   if (!S.dragging) return;
   S.dragging = false;
   S.vx = S.vy = 0;
   setState("idle");
 });
-pet.addEventListener("dblclick", () => {
+pet.addEventListener("dblclick", (e) => {
   if (S.dragging || S.state === "fly") return;
+  if (!nearFish(e.clientX, e.clientY)) return;   /* 离鱼远的双击不摸 */
   playOnce(pick(PAT_CLIPS), pick(PAT_LINES));
 });
 
@@ -1071,6 +1133,8 @@ function placeMenu() {
 
 window.addEventListener("contextmenu", (e) => {
   e.preventDefault();
+  lastMouse.cx = e.clientX; lastMouse.cy = e.clientY; lastMouse.sx = e.screenX; lastMouse.sy = e.screenY;
+  if (!nearFish(e.clientX, e.clientY)) return;   /* 离鱼远：不弹菜单（桌面空白处右键没反应） */
   markActive();                            /* 右键也算操作：贴边中就先把鱼放回桌面 */
   closeMenus();                            /* 上一轮菜单若在，同帧先恢复窗口（不闪烁） */
   refreshMenu();
@@ -1491,6 +1555,7 @@ function loop() {
     const win = getWinPos();
     window.dafeiyu.move(win.x, win.y);        /* 贴边时窗口位置由 updatePerch 负责 */
   }
+  refreshCursor();                            /* 鱼在静止鼠标底下移动：小手显隐每帧校正 */
 
   requestAnimationFrame(loop);
 }
