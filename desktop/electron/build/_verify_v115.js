@@ -142,11 +142,18 @@ const dragExpr = (cx, cy) => `(() => {
   let h3 = await ev(`Math.round(S.y)`);
   check("1.3 秒后位置不变（不掉落）", Math.abs(h3 - h2.y) <= 2, "y=" + h2.y + " → " + h3);
 
-  /* 悬浮中蹦跶：瞬时动画照常落地 */
+  /* 悬浮中蹦跶：瞬时动画照常落地。
+     注意：落地后产品逻辑会把 nextDecide 重置为 1 秒后，鱼随即恢复随机待机行为
+     （可能播一段一次性动画 → state 变 special），所以这里只断言"落回地面且蹦跶结束"，
+     不苛求 state 一定是 idle。轮询等待，最多 4 秒。 */
   await ev(`S.nextDecide = 1e12; S.nextIdleFun = 1e12; S.hopCount = 1; setState("hop"); startHop(); "ok"`);
-  await sleep(2600);
-  let h4 = JSON.parse(await ev(`JSON.stringify({ state: S.state, foot: Math.round(S.y - footPadCur) })`));
-  check("蹦跶后仍会落地", h4.state === "idle" && Math.abs(h4.foot - G) <= 3, JSON.stringify(h4));
+  let h4ok = false, h4 = null;
+  for (let i = 0; i < 14; i++) {
+    await sleep(300);
+    h4 = JSON.parse(await ev(`JSON.stringify({ state: S.state, foot: Math.round(S.y - footPadCur) })`));
+    if (Math.abs(h4.foot - G) <= 3 && h4.state !== "hop" && h4.state !== "fly") { h4ok = true; break; }
+  }
+  check("蹦跶后仍会落地", h4ok, JSON.stringify(h4));
 
   /* 再悬浮一次，然后关掉 → 掉回地面 */
   await ev(`S.throwLock = 0; "ok"`);
