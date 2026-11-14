@@ -37,6 +37,204 @@ const APP_INFO = {
 };
 ipcMain.handle("dafeiyu-app-info", () => APP_INFO);
 
+/* ============ 大脑（对话模型）选择 ============
+ * 云端模型清单由聊天窗拉取后回传缓存，桌宠菜单据此渲染。
+ * 配置只存模型 id —— 具体清单可能随云端更新，所以分开存。
+ */
+const BRAIN_PATH = path.join(os.homedir(), ".workbuddy", "dafeiyu-brain.json");
+const BRAIN_MODELS_PATH = path.join(os.homedir(), ".workbuddy", "dafeiyu-brain-models.json");
+
+/* 离线兜底：从没开过聊天窗时菜单也能显示这几项（开过就会用云端真实清单覆盖） */
+const BRAIN_FALLBACK = [
+  { id: "auto", name: "Auto（自动挑）", credits: "浮动", ctx: 256 },
+  { id: "glm-5.3", name: "GLM-5.3", credits: "x0.69", ctx: 1000 },
+  { id: "glm-5.3-flash", name: "GLM-5.3-Flash", credits: "x0.08", ctx: 1000 },
+  { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro", credits: "x0.51", ctx: 1000 },
+  { id: "deepseek-v4.1-flash", name: "DeepSeek-V4.1-Flash", credits: "x0.11", ctx: 1000 },
+  { id: "hy4free", name: "Hy4（免费）", credits: "x0.00", ctx: 960 },
+  { id: "hy3", name: "Hy3（免费）", credits: "x0.00", ctx: 192 },
+  { id: "deep-model", name: "极致", credits: "x1.00", ctx: 300 },
+  { id: "kimi-k3.1-pro", name: "Kimi-K3.1-Pro", credits: "x0.97", ctx: 1000 },
+  { id: "minimax-m3.1-flash", name: "MiniMax-M3.1-Flash", credits: "x0.08", ctx: 1000 },
+  { id: "glm-4.7", name: "GLM-4.7", credits: "x0.23", ctx: 200 },
+];
+
+function loadBrain() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(BRAIN_PATH, "utf8"));
+    /* 可能带 custom 字段（自定义模型配置），原样带回 */
+    if (raw && typeof raw.id === "string" && raw.id) return raw;
+  } catch (e) { /* 首次运行 */ }
+  return { id: "auto", name: "Auto（自动挑）" };
+}
+function saveBrain(b) {
+  try {
+    fs.mkdirSync(path.dirname(BRAIN_PATH), { recursive: true });
+    fs.writeFileSync(BRAIN_PATH, JSON.stringify(b, null, 2));
+  } catch (e) { log("保存大脑配置失败:", e.message); }
+}
+function loadBrainModels() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(BRAIN_MODELS_PATH, "utf8"));
+    if (Array.isArray(raw) && raw.length) return raw;
+  } catch (e) { /* 还没缓存 */ }
+  return BRAIN_FALLBACK;
+}
+function saveBrainModels(list) {
+  try {
+    fs.mkdirSync(path.dirname(BRAIN_MODELS_PATH), { recursive: true });
+    fs.writeFileSync(BRAIN_MODELS_PATH, JSON.stringify(list));
+  } catch (e) { log("保存模型清单失败:", e.message); }
+}
+function broadcastBrain(payload) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) { try { w.webContents.send("dafeiyu-brain-changed", payload); } catch (e) {} }
+  }
+}
+
+ipcMain.handle("dafeiyu-brain-get", () => ({ brain: loadBrain(), models: loadBrainModels() }));
+
+ipcMain.handle("dafeiyu-brain-set", (_e, id) => {
+  /* 自定义大脑：不查云端清单，配置存在 brain.json 的 custom 字段里 */
+  if (id === "custom") {
+    const cur = loadBrain();
+    if (!cur.custom || !cur.custom.baseUrl || !cur.custom.model) return { ok: false, msg: "还没配置自定义模型" };
+    const b = { id: "custom", name: "自定义 · " + cur.custom.model, custom: cur.custom };
+    saveBrain(b);
+    log("切换大脑 ->", b.id, b.name);
+    broadcastBrain({ brain: b, models: loadBrainModels() });
+    return { ok: true, brain: b };
+  }
+  const list = loadBrainModels();
+  const hit = list.find((m) => m.id === id);
+  if (!hit) return { ok: false, msg: "模型清单里没有 " + id };
+  const b = { id: hit.id, name: hit.name };
+  saveBrain(b);
+  log("切换大脑 ->", b.id, b.name);
+  broadcastBrain({ brain: b, models: list });
+  return { ok: true, brain: b };
+});
+
+/* 自定义模型配置（OpenAI 兼容接口：baseUrl + apiKey + model） */
+ipcMain.handle("dafeiyu-brain-custom-get", () => ({ custom: loadBrain().custom || null }));
+
+ipcMain.handle("dafeiyu-brain-custom-set", (_e, cfg) => {
+  cfg = cfg || {};
+  const baseUrl = String(cfg.baseUrl || "").trim();
+  const model = String(cfg.model || "").trim();
+  if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, msg: "接口地址要以 http(s):// 开头" };
+  if (!model) return { ok: false, msg: "模型 ID 不能为空" };
+  const c = { name: String(cfg.name || "").trim(), baseUrl, model, apiKey: String(cfg.apiKey || "").trim() };
+  const b = { id: "custom", name: "自定义 · " + model, custom: c };
+  saveBrain(b);
+  log("自定义大脑 ->", c.baseUrl, c.model);
+  broadcastBrain({ brain: b, models: loadBrainModels() });
+  return { ok: true, brain: b };
+});
+
+/* 自定义模型的对话流：主进程代发（渲染层 fetch 会被 CORS 拦，厂商接口基本不放行）。
+   按 reqId 回发 dafeiyu-custom-chunk：{delta:{content,reasoning_content}} / {done,usage,error} */
+const customRuns = new Map();   /* reqId -> AbortController */
+
+ipcMain.handle("dafeiyu-custom-chat-start", (e, payload) => {
+  const { reqId, messages, cfg } = payload || {};
+  if (!reqId || !cfg || !cfg.baseUrl || !cfg.model) return { ok: false, msg: "自定义模型参数不完整" };
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const send = (d) => {
+    try { if (win && !win.isDestroyed()) win.webContents.send("dafeiyu-custom-chunk", Object.assign({ reqId }, d)); } catch (err) {}
+  };
+  const ctrl = new AbortController();
+  customRuns.set(reqId, ctrl);
+  (async () => {
+    try {
+      let url = String(cfg.baseUrl).trim().replace(/\/+$/, "");
+      if (!/\/chat\/completions$/.test(url)) url += "/chat/completions";
+      const headers = { "Content-Type": "application/json" };
+      if (cfg.apiKey) headers.Authorization = "Bearer " + cfg.apiKey;
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature: 0.7 }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error("HTTP " + res.status + (t ? "：" + t.slice(0, 220) : ""));
+      }
+      const ctype = String(res.headers.get("content-type") || "");
+      if (ctype.indexOf("event-stream") === -1) {
+        /* 有的中转不回 SSE：整包 JSON 也接住 */
+        const j = await res.json().catch(() => null);
+        const d = j && j.choices && j.choices[0] && (j.choices[0].message || j.choices[0].delta);
+        if (d && d.content) send({ delta: { content: d.content } });
+        send({ done: true, usage: j && j.usage });
+        return;
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", usage = null;
+      for (;;) {
+        const r2 = await reader.read();
+        if (r2.done) break;
+        buf += dec.decode(r2.value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i).trim();
+          buf = buf.slice(i + 1);
+          if (line.indexOf("data:") !== 0) continue;
+          const data = line.slice(5).trim();
+          if (!data || data === "[DONE]") continue;
+          try {
+            const j = JSON.parse(data);
+            if (j.usage) usage = j.usage;
+            const ch = j.choices && j.choices[0];
+            const d = ch && (ch.delta || ch.message);
+            if (d && (d.content || d.reasoning_content)) {
+              send({ delta: { content: d.content || "", reasoning_content: d.reasoning_content || "" } });
+            }
+          } catch (err) { /* 半截行/心跳，忽略 */ }
+        }
+      }
+      send({ done: true, usage });
+    } catch (err) {
+      if (String(err && err.name) === "AbortError") send({ done: true });
+      else send({ done: true, error: String(err && err.message || err).slice(0, 300) });
+    } finally { customRuns.delete(reqId); }
+  })();
+  return { ok: true };
+});
+
+ipcMain.on("dafeiyu-custom-chat-abort", (_e, reqId) => {
+  const c = customRuns.get(reqId);
+  if (c) { try { c.abort(); } catch (err) {} }
+});
+
+/* 聊天窗拉到云端清单后回传（带真实倍率/上下文），菜单立刻跟着更新 */
+ipcMain.handle("dafeiyu-brain-models", (_e, list) => {
+  if (!Array.isArray(list) || !list.length) return { ok: false };
+  const slim = list
+    .filter((m) => m && m.id && m.enabled !== false && m.maxInputTokens)   /* 视频/图像模型不进大脑菜单 */
+    .map((m) => ({
+      id: String(m.id),
+      name: String(m.name || m.id),
+      credits: String(m.credits || (m.id === "auto" ? "浮动" : "免费")).replace(" credits", ""),
+      ctx: Math.round((m.maxInputTokens || 0) / 1000),
+      img: !!m.supportsImages,
+      icon: String(m.iconUrl || ""),
+      desc: String(m.descriptionZh || m.descriptionEn || "").slice(0, 90),
+    }));
+  if (!slim.length) return { ok: false };
+  saveBrainModels(slim);
+  const b = loadBrain();
+  /* 选中的模型如果已下架，回退 auto，避免一直请求不存在的模型（自定义大脑不在此列） */
+  if (b.id !== "custom" && !slim.find((m) => m.id === b.id)) {
+    b.id = "auto"; b.name = (slim.find((m) => m.id === "auto") || {}).name || "Auto";
+    saveBrain(b);
+    broadcastBrain({ brain: b, models: slim });
+  }
+  return { ok: true, count: slim.length, brain: loadBrain() };
+});
+
 // 聊天窗口位置记忆
 const CHAT_POS_PATH = path.join(os.homedir(), ".workbuddy", "dafeiyu-chat-pos.json");
 
@@ -349,6 +547,78 @@ function dispatchTask(task) {
 function sendSurfEvent(ev) {
   if (win && !win.isDestroyed()) win.webContents.send("dafeiyu-surf-event", ev);
 }
+
+/* ---- 聊天指令 → 桌宠动作（pet_act 工具的转发通道）---- */
+function forwardPetAct(name) {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("dafeiyu-pet-act", String(name || ""));
+    return true;
+  }
+  return false;
+}
+ipcMain.handle("dafeiyu-pet-act", (_e, name) => forwardPetAct(name));
+
+/* ---- 教学：模型把新动作教给桌宠（pet_teach 工具的转发通道，等桌宠回执） ---- */
+let teachWait = null;
+ipcMain.on("dafeiyu-pet-teach-result", (_e, res) => {
+  if (teachWait) { const r = teachWait; teachWait = null; r(res || { ok: false, msg: "学习结果为空" }); }
+});
+function forwardPetTeach(spec) {
+  if (!win || win.isDestroyed()) return Promise.resolve({ ok: false, msg: "桌宠不在线，学不了" });
+  return new Promise((resolve) => {
+    teachWait = resolve;
+    win.webContents.send("dafeiyu-pet-teach", spec || {});
+    setTimeout(() => {
+      if (teachWait === resolve) { teachWait = null; resolve({ ok: false, msg: "桌宠没响应学习请求" }); }
+    }, 3000);
+  });
+}
+
+/* ---- 视频：make_video 工具让桌宠窗口的隐藏 canvas 录制（等回执），另配保存通道 ---- */
+let videoWait = null;
+ipcMain.on("dafeiyu-video-result", (_e, res) => {
+  if (videoWait) { const r = videoWait; videoWait = null; r(res || { ok: false, msg: "录制结果为空" }); }
+});
+ipcMain.handle("dafeiyu-video-save", (_e, buf, ext) => {
+  try {
+    const artDir = path.join(os.homedir(), ".workbuddy", "dafeiyu-art");
+    fs.mkdirSync(artDir, { recursive: true });
+    const f = path.join(artDir, "vid-" + Date.now() + "-" + Math.floor(Math.random() * 9000 + 1000) + "." + (ext === "mp4" ? "mp4" : "webm"));
+    fs.writeFileSync(f, Buffer.from(buf));
+    log("video saved", f, buf.length + "B");
+    return { ok: true, path: f, size: buf.length };
+  } catch (e) { return { ok: false, msg: "保存视频失败：" + e.message }; }
+});
+function forwardVideoRecord(spec) {
+  if (!win || win.isDestroyed()) return Promise.resolve({ ok: false, msg: "桌宠不在线，录不了视频" });
+  return new Promise((resolve) => {
+    videoWait = resolve;
+    win.webContents.send("dafeiyu-video-record", spec || {});
+    setTimeout(() => {
+      if (videoWait === resolve) { videoWait = null; resolve({ ok: false, msg: "录制超时（5 分钟）" }); }
+    }, 300000);
+  });
+}
+
+/* ---- CPU 占用率采样：每 10 秒推给桌宠（CPU 状态鱼） ---- */
+let cpuLast = os.cpus();
+let cpuPctMain = 0;
+setInterval(() => {
+  try {
+    const cur = os.cpus();
+    let idleT = 0, total = 0;
+    for (let i = 0; i < cur.length && i < cpuLast.length; i++) {
+      const a = cur[i].times, b = cpuLast[i].times;
+      idleT += a.idle - b.idle;
+      total += (a.user - b.user) + (a.nice - b.nice) + (a.sys - b.sys) + (a.idle - b.idle) + (a.irq - b.irq);
+    }
+    cpuLast = cur;
+    cpuPctMain = total > 0 ? Math.round(100 * (1 - idleT / total)) : 0;
+    if (win && !win.isDestroyed()) win.webContents.send("dafeiyu-cpu", cpuPctMain);
+  } catch (e) {}
+}, 10000);
+ipcMain.handle("dafeiyu-cpu-now", () => cpuPctMain);
+
 ipcMain.handle("dafeiyu-surf-state", () => surf.getState());
 ipcMain.handle("dafeiyu-surf-toggle", async (_e, on) => {
   const want = on === undefined ? !surf.getState().enabled : !!on;
@@ -390,7 +660,7 @@ app.whenReady().then(() => {
       developers: [APP_INFO.developer],
     });
   } catch (e) { /* 平台不支持时忽略 */ }
-  pc.register(ipcMain, log, { fireTask: dispatchTask });   // 电脑操作能力（鼠标键盘/网络/本地内容/定时任务）
+  pc.register(ipcMain, log, { fireTask: dispatchTask, petAct: forwardPetAct, petTeach: forwardPetTeach, videoRecord: forwardVideoRecord });   // 电脑操作能力（鼠标键盘/网络/本地内容/定时任务/创作室）
   createWindow();
   watchState();
 });

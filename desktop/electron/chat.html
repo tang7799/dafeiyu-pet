@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src *">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src *">
 <title>和大肥鱼聊天</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -63,6 +63,14 @@
   #send.stop { background: #e86a5d; }
   #clear { border: 1.5px solid #cfe5f3; background: #f6fbff; color: #6b8ca6; border-radius: 9px; width: 34px; cursor: pointer; font-size: 14px; flex: none; }
   #clear:hover { border-color: #7fc0ea; color: #1f6fa8; }
+  #attach { border: 1.5px solid #cfe5f3; background: #f6fbff; color: #6b8ca6; border-radius: 9px; width: 34px; cursor: pointer; font-size: 14px; flex: none; }
+  #attach:hover { border-color: #7fc0ea; color: #1f6fa8; }
+  #attach-strip { display: none; flex-wrap: wrap; gap: 8px; padding: 6px 10px 0; }
+  #attach-strip .chip { position: relative; }
+  #attach-strip img { width: 52px; height: 52px; object-fit: cover; border-radius: 8px; border: 1.5px solid #cfe5f3; display: block; }
+  #attach-strip .x { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
+    background: #ff6b81; color: #fff; font-size: 11px; line-height: 18px; text-align: center; cursor: pointer; }
+  #attach-strip .x:hover { background: #e8505f; }
   #clear-menu { display: none; position: absolute; right: 10px; bottom: 52px; background: #fff;
     border: 1.5px solid #cfe5f3; border-radius: 10px; box-shadow: 0 4px 14px rgba(60,120,170,.25);
     padding: 4px; z-index: 10; width: 224px; }
@@ -102,12 +110,16 @@
     <button id="clear-all">🗑️ 清除屏幕 + 本地记录</button>
     <div class="tip">彻底删掉，不可恢复</div>
   </div>
+  <div id="attach-strip"></div>
   <div id="row">
     <button id="clear" title="清除对话">🧹</button>
+    <button id="attach" title="发图片给鱼（也能 Ctrl+V 粘贴或直接拖进来）">📎</button>
     <input id="input" placeholder="跟鱼说点什么…" maxlength="500">
     <button id="send">➤</button>
+    <input id="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp" multiple style="display:none">
   </div>
   <div id="ver">大肥鱼桌宠 <span id="ver-no">v1.1.5</span> · 开发者 Dudu Studio · Copyright © 2026 Dudu Studio. All Rights Reserved.</div>
+  <div id="usage" style="display:none;font-size:11px;color:#8a94a6;margin:2px 0 0;text-align:center;"></div>
 
   <!-- 首次运行：这台电脑用谁的额度 -->
   <div id="first-box" class="modal">
@@ -165,6 +177,7 @@ if (window.dafeiyu && window.dafeiyu.appInfo) {
     const el = document.getElementById("ver-no");
     if (el && i && i.version) el.textContent = "v" + i.version;
   }).catch(() => {});
+  refreshUsage();                           // 恢复今日对话账单
 }
 
 /* ---------- 云端配置：谁用谁填，额度各记各的 ---------- */
@@ -284,7 +297,9 @@ const TOOL_DOC = `
 screen_info {}  屏幕尺寸 + 鼠标位置
 sys_paths {}  主人电脑的真实目录（桌面、下载、文档、图片的绝对路径），不确定路径时先问它
 mouse_move {"x":800,"y":400}  移动鼠标
-mouse_click {"x":800,"y":400,"button":"left","clicks":1}  x/y 可省略＝在当前位置点
+click_text {"text":"设置","clicks":1}  ★要点软件里的按钮/菜单/选项，首选它：OCR 在屏幕上找到这段文字直接点它的中心，不用算坐标，窗口拖过、按钮挪位都不会偏。找不到文字就先 ocr_screen 对照原文（OCR 认错字就按原文重试）。双击用 clicks:2，右键用 button:"right"
+mouse_click {"x":800,"y":400,"button":"left","clicks":1}  x/y 可省略＝在当前位置点。坐标是从截图上量出来的，必须带 "space":"shot"（自动按截图比例换算成屏幕坐标，直接用会偏）：
+  mouse_click {"title":"记事本","x":300,"y":120}  点指定窗口内部：先把窗口拉到前台，再点窗口可见区左上角偏移 (x,y) 的位置，窗口被拖动过也不会偏；{"fx":0.5,"fy":0.9} 则按窗口宽高比例定位（0.5,0.5＝正中），与 x/y 二选一
 mouse_scroll {"dy":-3}  正数向下滚。★滚的是"鼠标当前指着"的那个区域——滚动前先 screenshot 确认鼠标位置，指错地方（列表/侧边栏）就先 mouse_move。也可以一次带上坐标：{"x":900,"y":500,"dy":-5}＝先把鼠标挪过去再滚
 mouse_drag {"x1":100,"y1":200,"x2":400,"y2":200}  按住左键拖拽
 key_type {"text":"要输入的文字","target":"窗口标题里的关键词"}  往目标窗口输入文字（内部自动用剪贴板粘贴，中文英文都不会被输入法拦截；mode:"type" 可强制逐字敲）。★ 强烈建议带上 target：鱼会先把那个窗口拉到前台再打字。不带 target 时鱼会自己找"上次打开/聚焦的窗口"，只有实在找不到才报错（报错别硬重试，改成 open_path 或 focus_window 先定位，再带着 target 打）
@@ -308,7 +323,7 @@ click_page {"text":"登录"}  ★在当前网页里按文字点链接/按钮（D
 page_type {"text":"关键词","into":"搜索","enter":true}  往网页输入框打字；enter:true 顺手回车（配合 read_page 就是"去网页搜东西"）
 page_scroll {"dy":600}  上下滚动当前网页（正数向下）
 close_page {}  用完网页关掉（鱼开的网页窗口 8 分钟没人用也会自己关）
-screenshot {}  截取当前屏幕，画面会自动压缩并直接附在结果里给你看，你就能看到屏幕内容了。不要用 read_file 去读图片（读不了）
+screenshot {}  截取当前屏幕直接附在结果里给你看。它本质是张缩略图：看布局、找窗口位置、确认软件打开没够用；★整屏图里的文字是糊的，不要用眼睛硬读——要读屏幕上的字一律用 ocr_screen。不要用 read_file 去读图片（读不了）
 screenshot {"region":{"x":100,"y":200,"w":400,"h":120}}  ★只截屏幕上的一小块并自动放大（小区域放大 2 倍）。要看清屏幕上的小字（人名、群名、数字、弹窗文字）就用它——整屏截图压缩后小字是糊的，看不准。region 坐标用你上一眼看到的那张截图里的位置（它的 width/height 坐标系）
   ★ 网页上的事优先 read_page / click_page（读的是真实 DOM 文字，比看图认字准得多）；screenshot 留给"必须看画面"的场景（视频、图片、桌面软件）
 bili_up {"up":"李永乐","order":"play","limit":10}  ★查 B 站 UP 主的视频排行：order play=播放量 / newest=最新 / fav=收藏。返回按序排名（rank:1 就是播放量最多的），带播放量和 BV 号
@@ -323,6 +338,23 @@ ocr_screen {}  把当前屏幕上的文字直接认出来（返回纯文本）�
 ocr_screen {"region":{"x":…,"y":…,"w":…,"h":…}}  ★局部放大 OCR：只认屏幕上一小块（region 坐标同 screenshot），并把放大原图附给你。返回的 text 可能有错别字，必须逐字对照附图，以图为准
   ★【认字铁律】整屏截图压缩后小字会糊、OCR 对小字也常认错（"层"→"定"、"颗"→"颖"、"搞"→"摸"这种）。要抄屏幕上的关键字（人名/群名/昵称/数字/金额）：先用 region 局部放大再认；识别结果和附图对不上时以图为准；还拿不准就问主人，别猜着回复。
   ★【引用消息铁律】在微信/QQ 里"引用某人的消息"回复时：①先 mouse_scroll 把目标消息翻进屏幕（鼠标要先挪进聊天区再滚）；②对那条气泡 region 局部放大，**昵称和引用的原文都从放大图里逐字抄**，不要凭 OCR 文字或记忆复述；③昵称里有形近字拿不准（了/3、人/入、日/目、未/末、仑/仓）就先问主人"是 XXX 吗"，确认了再引用；④发出去后 screenshot 看一眼，引用错人/错内容就撤回重发。
+pet_act {"act":"dance"}  ★让大肥鱼当场做动作：主人说"跳个舞/转个圈/拉小提琴/吃个冰淇淋"这类时立刻调它。act 必须写在花括号 JSON 里（中文名也认，如 {"act":"跳舞"}）
+draw_image {"prompt":"一只蓝鲸在星空下游泳","width":1024,"height":1024}  ★画画：主人说"画一张XX/生成一张图/给我画个XX"就调它。默认按已配 key 的平台自动走（智谱、硅基流动、通义万相、即梦…谁配了用谁）。主人点名平台就加 {"provider":"通义万相"}（中文名/别名都认：通义/万相/阿里/百炼、智谱、硅基流动、即梦/火山/豆包）。指定平台没配 key 会直接报错，这时引导主人给 key 再画，别偷偷换平台。结果带本地路径，鱼会自己展示
+make_video {"prompt":"一条蓝色小鲸鱼游过星空下的城市上空","duration":"5"}  ★做视频：真 AI 文生视频，直接一句话生成 5 秒视频，加 {"duration":"10"} 拉长到 10 秒。默认走智谱 cogvideox-flash（免费），主人点名就加 {"provider":"通义万相"}。生成要等 1~10 分钟，调完先告诉主人"在做了，要等几分钟"，出片后 open_path 播给主人看
+animate_image {"image":"C:\\\\...\\\\a.png","prompt":"画面自然流动，镜头缓缓推进"}  ★图生视频：把一张图（draw_image 的 path）变成 5 秒动态视频，默认智谱免费，可加 {"provider":"通义万相"}。同样要等几分钟
+art_config {}  ★查看/配置画图与视频平台（key 一律脱敏返回）。
+  ①主人报平台名 + key（如"用通义万相画图，key 是 sk-xxx"）→ 直接调 {"provider":"通义万相","key":"sk-xxx"}，不用问 baseUrl、不用问接口地址，内置平台自动认（智谱/硅基流动/通义万相/火山方舟即梦，中文名和别名都认）。
+  ②主人给的是别家接口（不在内置里）→ 一次给全：{"provider":"平台名","key":"...","baseUrl":"https://xxx/v1","model":"模型名"}，鱼会自动新建这个平台；要接自己部署的/SD WebUI 之类也走这条。
+  ③切换默认平台：{"imageProvider":"tongyi","videoProvider":"zhipu"}；删除自定义平台：{"delProvider":"平台名"}；删 key：{"provider":"平台名","key":""}。
+  ④没配的平台把返回里的 apply 注册链接发给主人；key 无效时把工具报错里的原因原样告诉主人，别自己猜。
+  ★支持两种协议：OpenAI 兼容（/v1/images/generations）和阿里云百炼异步任务（提交→轮询），两者都能接
+  ★主人发的图片素材：聊天窗 📎 按钮 / Ctrl+V 粘贴 / 拖拽进窗口都行，图片路径会以 [图片素材: C:\\...\\xx.jpg] 出现在消息里，图片内容你也能直接看到。主人说"用这张图做视频/让它动起来"就 animate_image {"image":"<素材路径>"}；"设成壁纸"就 set_wallpaper {"path":"<素材路径>"}；要参照它画新图就把要点写进 draw_image 的 prompt
+list_art {}  看鱼的作品集（画过的图/做过的视频都在 ~/.workbuddy/dafeiyu-art），主人说"之前画的呢/作品集"就调它
+set_wallpaper {"path":"C:\\\\...\\\\xxx.png"}  把一张图设成桌面壁纸（主人说"设成壁纸/当桌面背景"就调它，图一般来自 draw_image 的结果）
+  表演类：dance 跳舞 / spin 转圈 / sing 唱歌 / violin 小提琴 / flute 吹笛 / horse 骑马 / watergun 水枪 / snowman 堆雪人 / swing_ride 荡秋千 / kite 放风筝 / fan 扇风 / cat 变猫 / bubble 吐泡泡 / sway 摇摆 / look_around 东张西望 / work 干活 / bow 鞠躬 / stretch 伸懒腰 / yawn 打哈欠
+  吃东西（心情+15）：eat_rice 白饭 / eat_token Token / eat_snack 零食 / eat_icecream 冰淇淋 / eat_tangyuan 汤圆 / eat_hotpot 火锅
+  ★主人说"吃/来一份/请鱼吃 XX"就选对应食物名；说"跳舞/舞蹈"就是 dance。调完工具自然接一句话即可，别问"要不要看"。
+pet_teach {"act":"yoga","clip":"stretch","line":"做瑜伽呢，呼——吸——","fx":["🧘"]}  ★主人要的动作鱼不会时教它（自学升级）：act 取英文小写新名字，clip 从鱼会的片段里挑最像的一个（dance/spin/sing/bow/stretch/yawn/violin/flute/horse/watergun/fan/cat/snowman/swing_ride/kite/sway/bubble/look_around/work/work_code/think/startle/pat_happy/pat_wave），配一句台词和几个特效表情。教好鱼就永久记住，立刻用 pet_act 表演给主人看；下次直接 pet_act 新名字即可
 watch_video {"url":"https://www.bilibili.com/video/BV1xx411c7mD","maxMinutes":15}  ★看视频并做总结就用它，别用 screenshot 一帧帧盯
   它会自己开一个播放窗口把视频真的播一遍：边播边把画面上的字幕/PPT/公式认成一条【带时间戳的内容时间线】，画面大变动的地方还留几张关键画面。播放结束才返回，你拿到的就是全片内容。
   ★ 需要登录 B站（视频有官方字幕/试看结束/会员内容）时，它会自己弹登录窗等主人扫码，你不用自己开窗口；扫完码会自动接着看。主人也可以主动让你先调 bili_login 登录一次。
@@ -361,6 +393,19 @@ write_file {"path":"C:\\Users\\xxx\\a.docx","content":"要写的内容"}  写文
       PDF 是只读格式，不能改已有 PDF 的内容；要在原 PDF 上改字，只能 open_path 打开后用编辑器/工具另存，别承诺做不到的事
   ★ .doc / .xls / .ppt（97-2003 老格式）不能直接生成，会自动改存成 .docx / .xlsx / .pptx
   ★ 图片、压缩包、音视频这类二进制格式写不了，会直接报错——遇到就让主人用对应软件创建，或者改存成上面这几种格式
+run_cmd {"cmd":"python main.py","cwd":"桌面\\proj","timeout":120}  ★★ 执行命令（PowerShell）：装依赖、跑脚本、跑测试、git 都用它。返回真实的 exitCode/stdout/stderr，报错了照着改
+  ★ 写代码的标准循环：write_file 写文件 → run_cmd 跑（带 cwd 指向项目目录）→ 看 stderr 报错 → edit_file 改 → 再 run_cmd，直到退出码 0
+  ★ 每次执行前会弹窗让主人点「允许执行」；主人没点就不会跑，别反复重试同一个命令（会被当成骚扰），先跟主人说清楚要跑什么
+  ★ timeout 是秒（默认 120，最长 600）。要跑常驻服务（npm run dev / flask）就带上较大 timeout 并告诉主人"服务会一直跑着"
+  ★ 格式化磁盘、改注册表、关机、删系统目录这类命令会被直接拒绝（拦死，改说法重试也没用）
+run_code {"lang":"python","code":"print(sum(range(10)))"}  ★★ 快速算一段代码：不用建文件，临时跑完把 stdout 给你。lang 支持 python / node / powershell（不写会自动猜）
+  ★ 用途：验算一段逻辑、试一个正则、看某个库有没有装（import requests）、确认语法对不对。比建文件快得多
+  ★ 要跑有依赖的真实项目还是用 run_cmd 在项目目录里跑（run_code 的执行目录是临时目录，读不到项目里的相对路径文件）
+edit_file {"path":"桌面\\proj\\main.py","find":"if a = 1:","replace":"if a == 1:"}  ★★ 精确改代码：只替换指定那段原文，其它一个字都不动（改大文件必须用它，别用 write_file 整篇重写）
+  ★ find 必须是文件里逐字存在的原文（含缩进）。不确定就先 read_file 看真实内容再抄
+  ★ 同一段原文在文件里出现多次时会报错并告诉你行号——多带几行上下文让它唯一，或者加 "all":true 全改
+  ★ 按行改也行：{"path":"...","line":20,"content":"新的一行"} 改第 20 行；{"path":"...","line":20,"delete":true} 删掉第 20 行
+  ★ 新建文件用 write_file；edit_file 只改已有文件
 move_file {"from":"C:\\a\\x.txt","to":"C:\\b\\y.txt"}  移动或重命名文件（目标同名会拒绝）
 make_dir {"path":"C:\\a\\b"}  新建文件夹
 schedule_add {"name":"晨间播报","type":"remind","at":"08:30","message":"主人早上好~"}  定时任务。时间三选一：at="HH:MM"每天 / everyMinutes=30 每30分钟 / once="2026-11-07 09:00" 单次。
@@ -461,6 +506,32 @@ function addMsg(role, text, raw) {
   return div;
 }
 
+/* 创作室产物：图片/视频卡片（点图用系统看图器打开原图） */
+function addArtImg(src, path) {
+  const div = document.createElement("div");
+  div.className = "msg tool";
+  const img = document.createElement("img");
+  img.src = src;
+  img.dataset.path = path || "";
+  img.alt = "鱼的画作";
+  img.onclick = () => { if (img.dataset.path) window.dafeiyu.pc("open_path", { path: img.dataset.path }).catch(() => {}); };
+  div.appendChild(img);
+  msgsEl.appendChild(div);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return div;
+}
+function addArtVideo(path) {
+  const div = document.createElement("div");
+  div.className = "msg tool";
+  const v = document.createElement("video");
+  v.src = "file:///" + String(path).replace(/\\/g, "/");
+  v.controls = true; v.loop = true; v.autoplay = true; v.muted = true;
+  div.appendChild(v);
+  msgsEl.appendChild(div);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return div;
+}
+
 (function restore() {
   histStore = loadHistory();
   if (histStore.length) {
@@ -485,7 +556,15 @@ function chatHistory() {
     .slice(-12);
 }
 
+let brainCfg = null;   /* 主人选定的大脑 {id, name}；空则由云端清单第一个兜底 */
+
 async function initLLM() {
+  /* 自定义大脑优先：不依赖云端组件，干净版没填云配置也能用（走主人自己的接口） */
+  try {
+    const r = await window.dafeiyu.brainGet();
+    if (r && r.brain) brainCfg = r.brain;
+  } catch (e) { /* 忽略，走下面老路 */ }
+  if (brainCfg && brainCfg.id === "custom") { modelId = "custom"; return; }
   if (!cloud) {
     addMsg("sys", CLOUD_CLEAN
       ? "还没填云配置，所以没有连接任何账号。点右上角 ⚙ 填上自己的服务地址和公钥，填好就能聊了"
@@ -494,12 +573,34 @@ async function initLLM() {
   }
   try {
     const models = await cloud.llm.models.list();
-    const m = models.find((x) => x.disabled !== true);
-    if (m) modelId = m.id;
+    const usable = (models || []).filter((x) => x && x.disabled !== true && x.enabled !== false);
+    /* 把真实清单回传主进程：桌宠右键菜单的「🧠 大脑」用它渲染 */
+    try { await window.dafeiyu.brainModels(models); } catch (e) {}
+    /* 读主人选定的大脑（右键菜单里选的） */
+    if (!brainCfg) {
+      try { const r = await window.dafeiyu.brainGet(); brainCfg = r && r.brain; } catch (e) { brainCfg = null; }
+    }
+    const want = brainCfg && brainCfg.id ? usable.find((x) => x.id === brainCfg.id) : null;
+    if (want) modelId = want.id;
+    else {
+      const m = usable[0];
+      if (m) modelId = m.id;
+    }
   } catch (e) {
     addMsg("sys", "模型服务连接失败，请稍后再试");
   }
 }
+
+/* 主人从右键菜单换了大脑：立刻生效，不用关窗重开 */
+try {
+  window.dafeiyu.onBrainChanged((p) => {
+    if (!p || !p.brain) return;
+    const changed = modelId !== p.brain.id;
+    brainCfg = p.brain;
+    modelId = p.brain.id;
+    if (changed && !generating) addMsg("sys", "已换成 " + p.brain.name + "，下一条消息就用它回答");
+  });
+} catch (e) {}
 initLLM();
 
 /* ---------- 看视频的实时进度条 ---------- */
@@ -552,7 +653,15 @@ function decodeLoose(str) {
 // 模型给参数的方式五花八门：args 可能是对象、字符串、或直接摊在顶层，统一收拢
 const ARG_KEYS = ["path", "content", "append", "from", "to", "url", "x", "y", "x1", "y1", "x2", "y2",
   "dx", "dy", "text", "key", "mode", "button", "clicks", "title", "keyword",
-  "name", "message", "prompt", "at", "everyMinutes", "once", "type"];
+  "name", "message", "prompt", "at", "everyMinutes", "once", "type", "act", "action", "clip", "line", "fx", "fy", "space", "wait",
+  "width", "height", "seed", "images", "frames", "seconds", "transition", "image", "duration", "imageApi", "videoApi",
+  "provider", "imageProvider", "videoProvider", "size", "quality", "with_audio",
+  "baseUrl", "imgBase", "imageBase", "label", "proto", "protocol", "model", "imageModel",
+  "videoBaseUrl", "vidBase", "videoModel", "i2vModel", "delProvider",
+  // 1.1.12 写代码：run_cmd / run_code / edit_file
+  "cmd", "command", "script", "shell", "cwd", "dir", "workdir", "timeout",
+  "code", "source", "lang", "language",
+  "find", "replace", "old_string", "new_string", "oldText", "newText", "search", "old", "all", "delete", "replaceAll", "global"];
 function normalizeArgs(o) {
   let args = o.args !== undefined ? o.args : o.arguments;
   if (typeof args === "string") {
@@ -660,6 +769,7 @@ function describeCall(tool, a) {
   a = a || {};
   if (tool === "mouse_move") return "🖱️ 把鼠标挪到 (" + a.x + ", " + a.y + ")";
   if (tool === "mouse_click") return "🖱️ 在 (" + (a.x !== undefined ? a.x : "当前") + ", " + (a.y !== undefined ? a.y : "") + ") 点了" + (a.clicks === 2 ? "两下" : (a.button === "right" ? "右键" : "一下"));
+  if (tool === "click_text") return "🎯 点「" + (a.text || a.keyword || "") + "」";
   if (tool === "mouse_scroll") return "🖱️ 滚轮" + (Number(a.dy) > 0 ? "向下" : "向上") + " " + Math.abs(Number(a.dy) || 1) + " 格";
   if (tool === "mouse_drag") return "🖱️ 从 (" + a.x1 + "," + a.y1 + ") 拖到 (" + a.x2 + "," + a.y2 + ")";
   if (tool === "key_type") return "⌨️ 输入「" + String(a.text || "").slice(0, 30) + "」";
@@ -681,8 +791,24 @@ function describeCall(tool, a) {
   if (tool === "fetch_url") return "🌐 抓取 " + a.url;
   if (tool === "screenshot") return a && a.region ? "🔍 放大看屏幕 (" + a.region.x + "," + a.region.y + " " + a.region.w + "×" + a.region.h + ")" : "📷 截个屏看看";
   if (tool === "ocr_screen") return a && a.region ? "🔍 认屏幕上那块字 (" + a.region.x + "," + a.region.y + " " + a.region.w + "×" + a.region.h + ")" : "📝 认屏幕上的字";
+  if (tool === "pet_act") return "🎬 让鱼" + ({ dance: "跳舞", spin: "转圈圈", sing: "唱歌", eat_icecream: "吃冰淇淋", eat_hotpot: "吃火锅", eat_tangyuan: "吃汤圆", eat_rice: "吃白饭", eat_snack: "吃零食", eat_token: "吃 Token" }[(a && a.act) || ""] || "做个动作");
+  if (tool === "pet_teach") return "🎓 教鱼新动作（" + ((a && a.act) || "…") + "）";
+  if (tool === "draw_image") return "🎨 用" + ((a && a.provider) ? String(a.provider) + " " : "") + "画「" + String((a && (a.prompt || a.description)) || "").slice(0, 22) + "」…";
+  if (tool === "make_video") return "🎬 " + ((a && a.provider) ? String(a.provider) + " " : "") + "生成 AI 视频「" + String((a && (a.prompt || a.description)) || "").slice(0, 22) + "」，要等几分钟…";
+  if (tool === "animate_image") return "🎥 图生视频" + ((a && a.provider) ? "（" + a.provider + "）" : "") + "，要等几分钟…";
+  if (tool === "art_config") {
+    if (a && a.delProvider) return "🛠️ 移除平台 " + a.delProvider;
+    if (a && a.provider) return "🛠️ 保存 " + a.provider + " 的配置" + (a.key ? " 和 key" : "") + (a.baseUrl ? "（" + a.baseUrl + "）" : "");
+    if (a && (a.imageProvider || a.videoProvider)) return "🛠️ 切换默认通道 → " + (a.imageProvider || a.videoProvider);
+    return "🛠️ 看画图/视频平台配置";
+  }
+  if (tool === "list_art") return "🖼️ 翻作品集";
+  if (tool === "set_wallpaper") return "🖼️ 把画作设成桌面壁纸";
   if (tool === "screen_info") return "🖥️ 看屏幕信息";
   if (tool === "sys_paths") return "🗂️ 确认一下真实目录";
+  if (tool === "run_cmd") return "💻 跑命令：" + String((a && (a.cmd || a.command || a.script)) || "").replace(/\s+/g, " ").slice(0, 42);
+  if (tool === "run_code") return "🧪 试跑一段 " + ((a && (a.lang || a.language)) || "代码") + "：" + String((a && (a.code || a.source)) || "").replace(/\s+/g, " ").slice(0, 30);
+  if (tool === "edit_file") return "✏️ 改 " + ((a && a.path) || "") + (a && (a.all || a.replaceAll) ? "（全部替换）" : (a && a.line !== undefined && a.find === undefined ? "（第 " + a.line + " 行）" : ""));
   if (tool === "write_file") return (a.append ? "✍️ 往 " : "📝 写到 ") + (a.path || "");
   if (tool === "make_dir") return "📁 新建文件夹 " + (a.path || "");
   if (tool === "move_file") return "📦 从 " + (a.from || a.path) + " 移到 " + (a.to || a.target);
@@ -758,18 +884,68 @@ function emitSurfEvent(ev) {
   try { window.dafeiyu.surfEvent(ev); } catch (e) { /* 桌宠不在也不影响聊天 */ }
 }
 
+/* ---- 自定义大脑（OpenAI 兼容接口）：主进程代发请求，chunk 经 IPC 回流，包成异步迭代器 ---- */
+let customReqId = null;
+function customChunkGen(reqId, cfg, messages) {
+  return (async function* () {
+    const q = [];
+    let wake = null, done = false, err = null, genUsage = null;
+    const un = window.dafeiyu.onCustomChunk((d) => {
+      if (!d || d.reqId !== reqId) return;
+      if (d.error) { err = d.error; done = true; }
+      else if (d.done) { done = true; genUsage = d.usage || genUsage; }
+      else q.push(d);
+      if (wake) { const w = wake; wake = null; w(); }
+    });
+    try {
+      window.dafeiyu.customChatStart({ reqId, messages, cfg });
+      while (!done) {
+        if (q.length) {
+          const d = q.shift();
+          yield { choices: [{ delta: { content: (d.delta && d.delta.content) || "", reasoning_content: (d.delta && d.delta.reasoning_content) || "" } }], usage: d.usage };
+        } else {
+          await new Promise((r) => { wake = r; });
+        }
+      }
+      while (q.length) {
+        const d = q.shift();
+        yield { choices: [{ delta: { content: (d.delta && d.delta.content) || "", reasoning_content: (d.delta && d.delta.reasoning_content) || "" } }], usage: d.usage };
+      }
+    } finally { try { un(); } catch (e) {} }
+    if (err) throw new Error(err);
+  })();
+}
+
 async function streamOnce(messages) {
-  let content = "", bubble = null, sentEvents = 0;
-  abortCtrl = new AbortController();
-  const stream = cloud.llm.chat.completions.create({
-    model: modelId,
-    messages,
-    stream: true,
-    temperature: 0.7,
-    signal: abortCtrl.signal,
-  });
+  let content = "", bubble = null, sentEvents = 0, usage = null;
+  let stream;
+  if (modelId === "custom") {
+    const cfg = (brainCfg && brainCfg.custom) ||
+      (((await window.dafeiyu.brainCustomGet().catch(() => null)) || {}).custom);
+    if (!cfg || !cfg.baseUrl || !cfg.model) throw new Error("自定义模型还没配置好：右键大肥鱼 → 设置 → 🧠 大脑 → ✏️ 配置自定义模型");
+    customReqId = "cu" + Date.now() + Math.random().toString(36).slice(2, 6);
+    const rid = customReqId;
+    abortCtrl = { abort: () => window.dafeiyu.customChatAbort(rid) };   /* 停止按钮同样能掐断 */
+    stream = customChunkGen(rid, cfg, messages);
+  } else {
+    abortCtrl = new AbortController();
+    stream = cloud.llm.chat.completions.create({
+      model: modelId,
+      messages,
+      stream: true,
+      temperature: 0.7,
+      signal: abortCtrl.signal,
+    });
+  }
   for await (const chunk of stream) {
-    const delta = chunk.choices[0] && chunk.choices[0].delta;
+    if (chunk.usage) usage = chunk.usage;   // 有的 SDK/渠道只在最后一个 chunk 回 usage
+    const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
+    /* GLM-5.3 / DeepSeek 思考模式：先吐 reasoning_content，正文要等一会儿。
+       思考过程不塞进气泡（太长），只用来给主人一个"它真的在干活"的信号 */
+    if (delta && delta.reasoning_content && !content) {
+      if (!bubble) { bubble = addMsg("fish", "🤔 思考中…"); bubble.dataset.thinking = "1"; }
+      continue;
+    }
     if (delta && delta.content) {
       content += delta.content;
       const parsed = splitSurfEvents(stripSafetyTag(content));
@@ -779,12 +955,44 @@ async function streamOnce(messages) {
       }
       if (!parsed.shown && !bubble) continue;
       if (!bubble) bubble = addMsg("fish", "");
+      if (bubble.dataset.thinking) delete bubble.dataset.thinking;
       bubble.textContent = parsed.shown;
       bubble.dataset.raw = parsed.shown;
       msgsEl.scrollTop = msgsEl.scrollHeight;
     }
   }
+  if (usage) bumpUsage(usage);              // 今日对话账单（社区 XT-nya 版大肥鱼灵感）
   return { content: splitSurfEvents(stripSafetyTag(content)).shown, bubble };
+}
+
+/* ---- 今日对话账单：tokens 有就记，没回 usage 就静默不显示 ---- */
+/* 注意：启动时 appInfo 初始化就会调 refreshUsage()，所以这里必须是函数声明（有提升），
+   用 const 箭头函数会 TDZ 报错把整个脚本炸掉（发送/关闭全失效） */
+function fmtK(n) { return n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0); }
+function readUsage() {
+  try {
+    const o = JSON.parse(localStorage.getItem("dfy_usage") || "{}");
+    return o.date === new Date().toDateString() ? o : { date: new Date().toDateString(), calls: 0, tin: 0, tout: 0 };
+  } catch (e) { return { date: new Date().toDateString(), calls: 0, tin: 0, tout: 0 }; }
+}
+function usageText(o) {
+  return "🪙 今日对话 " + o.calls + " 次 · 输入 " + fmtK(o.tin) + " / 输出 " + fmtK(o.tout) + " tokens";
+}
+function bumpUsage(u) {
+  if (!u) return;
+  const o = readUsage();
+  o.calls = (o.calls || 0) + 1;
+  o.tin = (o.tin || 0) + (u.prompt_tokens || 0);
+  o.tout = (o.tout || 0) + (u.completion_tokens || 0);
+  localStorage.setItem("dfy_usage", JSON.stringify(o));
+  const el = document.getElementById("usage");
+  if (el) { el.textContent = usageText(o); el.style.display = "block"; }
+}
+function refreshUsage() {
+  const o = readUsage();
+  const el = document.getElementById("usage");
+  if (!el) return;
+  if (o.calls) { el.textContent = usageText(o); el.style.display = "block"; }
 }
 
 async function runTurn(userText, opts) {
@@ -793,11 +1001,17 @@ async function runTurn(userText, opts) {
     if (!opts.surf) return;
     try { window.dafeiyu.surfEvent("round_end"); } catch (e) {}
   };
-  /* 干净版兜底：没配置就绝不发请求（定时任务/脚本触发的路径也会被挡在这里） */
+  /* 干净版兜底：没配置就绝不发请求（自定义大脑走主人自己的接口，不受此限） */
   if (CLOUD_CLEAN && !cloud) {
-    addMsg("sys", "还没有填云配置，这条没有发出去。点右上角 ⚙ 填上自己的服务地址和公钥再聊。");
-    endRound();
-    return;
+    try {
+      const r = await window.dafeiyu.brainGet();
+      if (r && r.brain && r.brain.id === "custom") { brainCfg = r.brain; modelId = "custom"; }
+    } catch (e) {}
+    if (modelId !== "custom") {
+      addMsg("sys", "还没有填云配置，这条没有发出去。点右上角 ⚙ 填上自己的服务地址和公钥再聊。");
+      endRound();
+      return;
+    }
   }
   if (!modelId) await initLLM();                     // 首次进页面时模型列表可能还没回来，补一次
   if (!modelId) { addMsg("sys", "模型还没准备好，稍等一下再试~"); endRound(); return; }
@@ -809,6 +1023,12 @@ async function runTurn(userText, opts) {
   const hist = chatHistory();
   // 保证本轮这句话一定在 messages 里（定时任务、脚本触发时不依赖 DOM 顺序）
   if (!hist.length || hist[hist.length - 1].content !== userText) hist.push({ role: "user", content: userText });
+  // 主人随消息发的图片：作为多模态内容给模型"看"，同时文本里已带 [图片素材: 路径] 供工具使用
+  if (opts.imgs && opts.imgs.length) {
+    const last = hist[hist.length - 1];
+    last.content = [{ type: "text", text: last.content }]
+      .concat(opts.imgs.map((im) => ({ type: "image_url", image_url: { url: im.dataUrl } })));
+  }
   const messages = [
     { role: "system", content: FISH_PERSONA + (opts.surf ? SURF_DOC : "") + (pcEnabled ? TOOL_DOC + envDoc() : "") },
     ...hist,
@@ -858,7 +1078,19 @@ async function runTurn(userText, opts) {
         (res.ok ? "✅ " : "❌ ") + call.tool + "：" + briefResult(res.ok ? res.result : res));
       messages.push({ role: "assistant", content });
       // 截屏结果带图片数据：把图直接给模型"看"（多模态消息），而不是读路径
-      if (res.ok && call.tool === "watch_video" && res.result && res.result.bvid) {
+      if (res.ok && call.tool === "draw_image" && res.result && res.result.dataUrl) {
+        // 画画完成：聊天区直接展示作品，并把预览图给模型"看"（它能评价/决定要不要重画）
+        addArtImg(res.result.dataUrl, res.result.path);
+        messages.push({
+          role: "user",
+          content: [
+            { type: "text", text: "工具结果：draw_image 完成（" + res.result.provider + "，" + res.result.width + "×" + res.result.height + "，已存 " + res.result.path + "）。下面附了这张画的预览，请看图后用一两句话向主人介绍这幅画；如果明显没画出主人要的东西，可以主动说「我重画一张」并用不同的提示词再调一次。主人想要这张做壁纸的话，用 set_wallpaper {\"path\":\"" + res.result.path + "\"}。" },
+            { type: "image_url", image_url: { url: res.result.dataUrl } },
+          ],
+        });
+      } else if (res.ok && (call.tool === "make_video" || call.tool === "animate_image") && res.result && res.result.path) {
+        addArtVideo(res.result.path);
+      } else if (res.ok && call.tool === "watch_video" && res.result && res.result.bvid) {
         // 看视频：时间线当文字给，关键画面当图片给（一条消息里混着发，最省上下文）
         const r = res.result;
         const imgs = Array.isArray(r.images) ? r.images : [];
@@ -880,7 +1112,7 @@ async function runTurn(userText, opts) {
         const isOcr = call.tool === "ocr_screen";
         const text = isOcr
           ? "工具结果：ocr_screen 识别完成（区域已放大）。★OCR 可能认错字——下面附了放大原图，请逐字对照图片，尤其是人名、群名、数字、金额，一律以图为准。\n—— OCR 文字 ——\n" + (res.result.text || "（没认出文字）")
-          : "工具结果：screenshot 成功" + (res.result.region ? "（局部" + (res.result.region.zoomed ? "放大 2 倍" : "") + "截图）" : "") + "（" + Math.round(res.result.bytes / 1024) + "KB）。请仔细看图回答主人的问题。";
+          : "工具结果：screenshot 成功" + (res.result.region ? "（局部" + (res.result.region.zoomed ? "放大 2 倍无损" : "") + "截图）" : "") + "（" + Math.round(res.result.bytes / 1024) + "KB）。" + (res.result.region ? "请仔细看图回答主人的问题。" : "这张是缩略图：可以用来看布局/找窗口/确认状态，但里面的文字是糊的，不要用眼睛硬读小字——要读字请改用 ocr_screen。");
         messages.push({
           role: "user",
           content: [
@@ -950,17 +1182,85 @@ async function runTurn(userText, opts) {
 
 sendBtn.addEventListener("click", () => {
   if (generating) { if (abortCtrl) abortCtrl.abort(); return; }
-  /* 干净版：没填配置就不让发，直接引导去填 */
-  if (CLOUD_CLEAN && !myCfg) {
+  /* 干净版：没填配置就不让发，直接引导去填（自定义大脑走主人自己的接口，不受此限） */
+  if (CLOUD_CLEAN && !myCfg && modelId !== "custom") {
     addMsg("sys", "先填上自己的云配置才能聊天～填好之后，所有消耗都记在你自己的账号上。");
     openCfgBox();
     return;
   }
   const text = inputEl.value.trim();
-  if (!text) return;
-  addMsg("user", text);
+  if (!text && !attachImgs.length) return;
+  const imgs = attachImgs.slice();
+  const full = text + (imgs.length ? (text ? "\n" : "") + imgs.map((i) => "[图片素材: " + i.path + "]").join("\n") : "");
+  addMsg("user", text || "🖼️ 给你看张图", full);
+  for (const im of imgs) addArtImg(im.dataUrl, im.path);
   inputEl.value = "";
-  runTurn(text);
+  attachImgs = []; renderStrip();
+  runTurn(full, { imgs });
+});
+/* ---------- 发图片给鱼（📎 / Ctrl+V 粘贴 / 拖拽） ---------- */
+const attachBtn = document.getElementById("attach"),
+      fileInput = document.getElementById("file"),
+      attachStrip = document.getElementById("attach-strip");
+let attachImgs = [];   // { path, dataUrl }
+function renderStrip() {
+  attachStrip.innerHTML = "";
+  attachStrip.style.display = attachImgs.length ? "flex" : "none";
+  attachImgs.forEach((im, idx) => {
+    const chip = document.createElement("div"); chip.className = "chip";
+    const img = document.createElement("img"); img.src = im.dataUrl; img.title = im.path;
+    const x = document.createElement("span"); x.className = "x"; x.textContent = "✕"; x.title = "移除";
+    x.onclick = () => { attachImgs.splice(idx, 1); renderStrip(); };
+    chip.appendChild(img); chip.appendChild(x); attachStrip.appendChild(chip);
+  });
+}
+function fileToThumb(file) {
+  return new Promise((res) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => {
+      const scale = Math.min(1, 720 / Math.max(im.width, im.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(im.width * scale));
+      cv.height = Math.max(1, Math.round(im.height * scale));
+      cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      res(cv.toDataURL("image/jpeg", 0.75));
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); res(null); };
+    im.src = url;
+  });
+}
+async function addAttachFile(file) {
+  if (!file || !/^image\//.test(file.type)) { addMsg("sys", "只能收图片哦（jpg / png / webp / gif）"); return; }
+  if (file.size > 20 * 1024 * 1024) { addMsg("sys", "这张图太大了（超过 20MB）"); return; }
+  const dataUrl = await fileToThumb(file);
+  if (!dataUrl) { addMsg("sys", "这张图读不出来，换一张试试"); return; }
+  let p = file.path || "";
+  if (!p) {   /* 粘贴/拖拽进来的图没有本地路径：存到作品集 upload 目录 */
+    try {
+      const r = await window.dafeiyu.pc("save_image", { b64: dataUrl });
+      if (r && r.ok && r.result && r.result.path) p = r.result.path;
+      else addMsg("sys", "图片没能存下来：" + ((r && r.error) || "未知原因"));
+    } catch (e) { addMsg("sys", "图片没能存下来：" + e.message); }
+  }
+  if (!p) return;
+  attachImgs.push({ path: p, dataUrl });
+  renderStrip();
+}
+attachBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => { for (const f of fileInput.files) await addAttachFile(f); fileInput.value = ""; });
+inputEl.addEventListener("paste", (e) => {
+  const items = (e.clipboardData || {}).items || [];
+  for (const it of items) {
+    if (it.type && it.type.startsWith("image/")) { e.preventDefault(); addAttachFile(it.getAsFile()); break; }
+  }
+});
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const fs2 = (e.dataTransfer || {}).files || [];
+  for (const f of fs2) addAttachFile(f);
 });
 inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }

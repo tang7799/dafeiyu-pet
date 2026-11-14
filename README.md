@@ -6,7 +6,7 @@
 
 A chubby blue whale-girl who lives on your Windows desktop and eats rice.
 
-`v1.1.7` · Electron 45 · Windows x64 · Developer **Dudu Studio**
+`v1.1.14` · Electron 45 · Windows x64 · Developer **Dudu Studio**
 
 > 🇨🇳 中文文档：[AtomGit mirror](https://atomgit.com/jettyjoy/dafeiyu-pet)
 
@@ -14,7 +14,7 @@ A chubby blue whale-girl who lives on your Windows desktop and eats rice.
 
 ---
 
-A DeepSeek "Big Fat Fish" (dsh-pet) style desktop pet: a transparent always-on-top window with an official-style chibi whale-girl driven by webm animations. She strolls around, sleeps, slacks off, and lets you drag and toss her around. Hook her up to AI and she can also **chat with you, operate your computer, watch Bilibili videos and summarize them, and even surf the web on her own**.
+A DeepSeek "Big Fat Fish" (dsh-pet) style desktop pet: a transparent always-on-top window with an official-style chibi whale-girl driven by webm animations. She strolls around, sleeps, slacks off, and lets you drag and toss her around. Hook her up to AI and she can also **chat with you, operate your computer, draw pictures and make videos, write code, watch Bilibili videos and summarize them, and even surf the web on her own**.
 
 <div align="center">
 <table>
@@ -37,15 +37,31 @@ A DeepSeek "Big Fat Fish" (dsh-pet) style desktop pet: a transparent always-on-t
 - **Weather briefing** ☁️: on first meeting each morning, reports the weather and umbrella advice (wttr.in)
 - **Hover mode** 🪁: toggle it on and the fish stays wherever you drop her, no falling; toggle off to restore gravity
 - **Murmuring** 💬: random speech bubbles while idle
+- **Companionship extras**: works alongside you when you keep typing (BongoCat-inspired), complains when your CPU runs hot (RunCat-inspired), water-drinking reminders, time-of-day greetings and holiday easter eggs, gets angry if you rapidly click her 3 times
 
 ### 💬 AI chat window
 - Streaming replies, animated mouth while talking, stop mid-generation, clear conversation, local history persistence
 - Dedicated whale-girl persona (soft and cuddly, calls tokens "rice bowls"), natural spoken-style constraints (no Markdown / emojis / role-play brackets)
 - Tool calling: the fish can invoke all the "computer control" tools below while chatting
+- **🧠 Brain picker** (new in v1.1.14): right-click the fish → Settings → Brain — a WorkBuddy-style model selector with quick presets (Auto / Fast / Balanced / Max) plus a scrollable list of all 37 cloud models, each row showing its credit multiplier (`0.69x` style), a green "limited-time free" tag for zero-cost models, and a ✓ on the current one. Switching takes effect instantly, no chat-window restart needed
+- **✏️ Custom model** (new in v1.1.14): connect any OpenAI-compatible endpoint — DeepSeek, Zhipu, Tongyi, SiliconFlow, Volcengine Ark, self-hosted relays, or a local Ollama. Just fill in base URL + API key + model ID; requests are relayed by the main process so browser CORS never gets in the way. The clean build can chat through this route even without any cloud configuration
+- **Send images** (new in v1.1.11): 📎 button / Ctrl+V paste / drag-and-drop into the chat window — the model can actually "see" the picture, and it is stored in the art gallery for the drawing tools to reference
+- **Daily usage meter** (new in v1.1.11): today's conversation count and input / output tokens shown at the bottom of the chat window
+
+### 🎨 Creation Studio: drawing & video (one sentence in chat gets it done)
+- **Drawing**: say "draw a whale-girl in the snow" and the artwork lands in `~/.workbuddy/dafeiyu-art`, with a one-click "set as wallpaper"
+- **Video**: text-to-video and image-to-video (turn a gallery picture into a moving clip), MP4 saved automatically
+- **Swappable platforms** (new in v1.1.13): built-in **Zhipu / SiliconFlow / Tongyi Wanxiang (Alibaba Bailian) / Volcengine Ark (Jimeng)** — say "use Tongyi Wanxiang for drawing, my key is sk-xxx" and it is saved on the spot. Fully custom platforms are supported too, with both OpenAI-compatible and Alibaba Bailian async protocols. When you name a platform, that one is used strictly — on failure you get the real error instead of a silent channel switch
+- **Aggregated errors** (new in v1.1.10): when multiple channels are tried, every platform's real failure reason is reported in one message, so an invalid key is obvious at a glance
+
+### 💻 Let the fish write code (new in v1.1.12)
+- In chat, the fish can run shell commands (`run_cmd`), execute Python / Node scripts (`run_code`), and make precise file edits (`edit_file`) — completing the whole loop of "write a script → run it → read the error → fix it → run it green" on her own
+- Dangerous commands (formatting, registry edits, shutdown, …) are blocked at code level; every command run pops a native confirmation dialog with a "don't ask again" checkbox (resettable in Settings)
+- UTF-8 output never garbles Chinese, and Windows CRLF line endings are preserved exactly
 
 ### 🖥 Computer control (34 tools, callable from chat)
 - Mouse & keyboard: move / click / scroll / drag / type / key presses
-- Screen understanding: screenshots + OCR
+- Screen understanding: screenshots + OCR (including `click_text` — OCR-locate and click on-screen text without coordinates)
 - Browser: open bookmarked URLs, read page DOM, click, type, scroll, fetch any URL
 - Files & apps: read/write files, list directories, move/create, open apps or files and focus their windows
 - Bilibili suite: video summaries (with subtitles & frames), uploader video rankings, read comments, post comments (with a confirmation dialog before publishing — always human-approved)
@@ -62,16 +78,52 @@ Turn on the "Autonomous Surfing" switch and the fish will browse Bilibili on her
 ### 🔗 WorkBuddy integration
 - With the companion WorkBuddy skill (`dfy_state.py`), the pet switches to thinking / working / done / error animations in real time while an agent works, and celebrates when the job is done
 
+## 🚀 Quick start
+
+1. After installing, right-click the fish on your desktop: **💬 AI Chat** opens the chat window and you'll get a reply to your very first message
+2. Give her jobs in plain words: `draw a whale-girl in the snow`, `summarize this Bilibili video BV1xxx`, `write a script to organize my Downloads folder`, `remind me to drink water at 9 every morning`
+3. Explore the right-click menu: 🎬 play animations (25 clips), 🍚 feed, ⚙️ Settings (color themes / auto-start / hover mode / pomodoro / water reminders / brain picker…)
+
+## 🔑 AI capabilities & API key setup
+
+Every AI feature needs a "brain". The clean build ships with no built-in account — pick one of the three routes below:
+
+### Route A: WorkBuddy cloud configuration (recommended — one key unlocks all 37 cloud models)
+
+1. Register / log in to the WorkBuddy cloud service and get your own **service address + public key** (starts with `wbpk_`)
+2. Open the chat window, click the **⚙** button in the top-right corner, paste them in and save — you can chat right away
+3. Cloud models route through `auto` automatically; you can also right-click the fish → Settings → **🧠 Brain** and pick your own (GLM-5.3 / DeepSeek / Kimi / MiniMax etc., free tiers included) — switching takes effect instantly
+
+### Route B: Custom model (your own API key, no WorkBuddy needed)
+
+1. Right-click the fish → ⚙️ Settings → **🧠 Brain** → **✏️ Configure custom model** at the bottom
+2. Fill in four fields:
+   - **Name**: anything you like (optional)
+   - **Base URL**: an OpenAI-compatible endpoint, usually ending in `/v1` — e.g. `https://api.deepseek.com/v1`, `https://open.bigmodel.cn/api/paas/v4`
+   - **API key**: the key from that platform's console
+   - **Model ID**: e.g. `deepseek-chat`, `glm-4.7`
+3. Saving takes effect immediately; chat and tool calls all go through your key. The key is stored only in local `~/.workbuddy/dafeiyu-brain.json`
+4. Zero-key option: install [Ollama](https://ollama.com) locally and `ollama pull qwen3`, then set base URL to `http://127.0.0.1:11434/v1`, leave the key empty, and use `qwen3` as the model ID
+
+### Route C: Drawing / video (Creation Studio keys — independent from chat keys)
+
+1. Register at the [Zhipu open platform](https://open.bigmodel.cn) (free) and copy your key from the API Keys page
+2. Tell the fish: `configure drawing platform, Zhipu, key is YOUR_KEY` — that single key unlocks both drawing (cogview-3-flash) and video (cogvideox-flash) **on their free tiers**
+3. To switch platforms: `use Tongyi Wanxiang for drawing, key is sk-xxx` (Tongyi / SiliconFlow / Volcengine Ark / custom endpoints supported, see the feature list above)
+4. Configuration is stored in `~/.workbuddy/dafeiyu-art.json`; to move to another computer, just copy the brain / art JSON files over
+
+> The three routes don't conflict: use only A, or combine B + C (chat with your own DeepSeek key while drawing/video run on Zhipu's free tier).
+
 ## 📦 Installation
 
-1. Download **`DafeiyuPet-Clean-Setup-1.1.7.exe`** (~132 MB) from [Releases · v1.1.7](https://github.com/tang7799/dafeiyu-pet/releases/tag/v1.1.7)
-   - Direct link: [releases/download/v1.1.7/DafeiyuPet-Clean-Setup-1.1.7.exe](https://github.com/tang7799/dafeiyu-pet/releases/download/v1.1.7/DafeiyuPet-Clean-Setup-1.1.7.exe)
+1. Download **`DafeiyuPet-Clean-Setup-1.1.14.exe`** (~132 MB) from [Releases · v1.1.14](https://github.com/tang7799/dafeiyu-pet/releases/tag/v1.1.14)
+   - Direct link: [releases/download/v1.1.14/DafeiyuPet-Clean-Setup-1.1.14.exe](https://github.com/tang7799/dafeiyu-pet/releases/download/v1.1.14/DafeiyuPet-Clean-Setup-1.1.14.exe)
    - Mirror: [AtomGit jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet)
 2. Run the NSIS installer (choose the install directory; auto-start on boot is enabled by default and can be turned off in the pet's settings)
-3. Launch it and right-click the fish that appears on your desktop
+3. Launch it and right-click the fish that appears on your desktop — follow "Quick start" above, and set up AI via one of the three routes in "API key setup"
 
-> **Clean vs bundled build**: the clean build ships without any cloud account configuration — before chatting / surfing you need to fill in your own service address and public key via the ⚙ button in the chat window. The bundled build contains the developer's own configuration and is not distributed.
-> Requirements: Windows 10 / 11 x64. Installer sha256: `eaeee1e4ca17bdd37a2d5c7898ea2bc40497cdfe8b1b0eb5645eba14fdf41102`
+> **Clean vs bundled build**: the clean build ships without any cloud account configuration — set up AI via one of the three routes above (the custom-model route doesn't even need a WorkBuddy key). The bundled build contains the developer's own configuration and is not distributed.
+> Requirements: Windows 10 / 11 x64. Installer sha256: `5ba54b528c27f48da75b16952abca93360fde6e92e1f9a5c6376c194ac860191`
 
 ## 🛠 Local development
 
@@ -91,6 +143,11 @@ node build/_verify_v114.js       # feeding / pomodoro / mood / weather (27 check
 node build/_verify_v115.js       # hover mode (11 checks)
 node build/_verify_surf.js       # autonomous surfing (25 checks)
 node build/_verify_surf_unit.js  # surfing unit tests (19 checks)
+node build/_verify_code.js       # coding loop: run_cmd / run_code / edit_file (20 checks)
+node build/_verify_art.js        # Creation Studio drawing / video channels (18 checks)
+node build/_verify_providers.js  # drawing platform registry (34 checks, local mock)
+node build/_verify_brain.js      # brain switching (14 checks, incl. real cloud call)
+node build/_verify_brainui.js    # brain menu rework + custom model (18 checks, local mock SSE)
 node build/verify-clean.js       # clean-build leak audit
 ```
 
@@ -114,7 +171,7 @@ desktop/electron/
 
 ## 📜 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) (complete history from v1.0.0 to v1.1.7). Chinese docs mirror: [AtomGit jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet).
+See [CHANGELOG.md](CHANGELOG.md) (complete history from v1.0.0 to v1.1.14). Chinese docs mirror: [AtomGit jettyjoy/dafeiyu-pet](https://atomgit.com/jettyjoy/dafeiyu-pet).
 
 ## ⚠️ Notes & credits
 

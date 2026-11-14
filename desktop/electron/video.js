@@ -22,7 +22,19 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const PART = "persist:dafeiyu-video"; // 独立分区：登录过 B 站就一直是登录态
 const TMP = path.join(os.tmpdir(), "dafeiyu-watch");
-const PS = path.join(__dirname, "ocr_win.ps1");
+/* 打包后 ocr_win.ps1 在 asar 里，外部 powershell.exe 读不了 asar 虚拟路径——
+   首次使用时拷到真实目录再执行（Electron 自己的 fs 能读 asar） */
+const PS_SRC = path.join(__dirname, "ocr_win.ps1");
+let psReal = null;
+function psPath() {
+  if (!psReal || !fs.existsSync(psReal)) {
+    if (!PS_SRC.includes("app.asar")) { psReal = PS_SRC; return psReal; }
+    psReal = path.join(TMP, "ocr_win.ps1");
+    fs.mkdirSync(TMP, { recursive: true });
+    fs.copyFileSync(PS_SRC, psReal);
+  }
+  return psReal;
+}
 
 /* ---------------- 小工具 ---------------- */
 
@@ -284,7 +296,7 @@ function ocrFile(file, scale, region) {
   // 串行：避免同时开一堆 powershell
   const run = () =>
     new Promise((resolve) => {
-      const a = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", PS, "-Path", file, "-Scale", String(scale || 200)];
+      const a = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", psPath(), "-Path", file, "-Scale", String(scale || 200)];
       if (region) a.push("-Left", region[0], "-Top", region[1], "-Width", region[2], "-Height", region[3]);
       execFile("powershell.exe", a, { windowsHide: true, maxBuffer: 8 * 1024 * 1024, encoding: "utf8" }, (err, out) => {
         if (err) return resolve({ ok: false, error: err.message });

@@ -34,15 +34,340 @@ const PERM_PATH = path.join(WORK_DIR, "dafeiyu-pc.json");
 const SHOT_DIR = path.join(WORK_DIR, "dafeiyu-shots");
 const TASKS_PATH = path.join(WORK_DIR, "dafeiyu-tasks.json");
 
+/* ---------- 鱼的创作室（画图/视频）---------- */
+const ART_DIR = path.join(WORK_DIR, "dafeiyu-art");
+const ART_CFG = path.join(WORK_DIR, "dafeiyu-art.json");
+let artCfg = null;
+function artConfig() {
+  if (artCfg) return artCfg;
+  try { artCfg = JSON.parse(fs.readFileSync(ART_CFG, "utf8")) || {}; } catch (e) { artCfg = {}; }
+  /* 老配置迁移：imageApi/videoApi → providers.custom，免得老用户的配置失效 */
+  if (artCfg.imageApi && artCfg.imageApi.baseUrl) {
+    artCfg.providers = artCfg.providers || {};
+    if (!artCfg.providers.custom) {
+      artCfg.providers.custom = {
+        label: "自定义接口", baseUrl: artCfg.imageApi.baseUrl, model: artCfg.imageApi.model || null, proto: "openai",
+        videoBaseUrl: (artCfg.videoApi && artCfg.videoApi.baseUrl) || null,
+        videoModel: (artCfg.videoApi && artCfg.videoApi.model) || null,
+        videoProto: artCfg.videoApi ? "dashscope" : null,
+      };
+    }
+    const mk = artCfg.keys = artCfg.keys || {};
+    if (artCfg.imageApi.key && !mk.custom) mk.custom = artCfg.imageApi.key;
+    if (artCfg.videoApi && artCfg.videoApi.key && !mk.custom) mk.custom = artCfg.videoApi.key;
+    if (artCfg.imageProvider === "free") artCfg.imageProvider = "auto";
+    delete artCfg.imageApi; delete artCfg.videoApi;
+    try { fs.writeFileSync(ART_CFG, JSON.stringify(artCfg, null, 2)); } catch (e) {}
+  }
+  return artCfg;
+}
+function saveArtConfig() { try { fs.writeFileSync(ART_CFG, JSON.stringify(artCfg, null, 2)); } catch (e) {} }
+function maskKey(k) { const s = String(k || ""); return s ? s.slice(0, 5) + "***(" + s.length + "位)" : ""; }
+
+/* 创作室平台注册表：内置 4 家（中文名/别名都能认）+ 用户自定义（cfg.providers[id]）。key 一律存 cfg.keys[id]
+   imgProto: openai=标准 /v1/images/generations；dashscope=阿里云异步任务（提交→轮询）
+   vidProto: zhipu=智谱视频；dashscope=万相异步视频 */
+const ART_PRESETS = {
+  zhipu: {
+    label: "智谱", aliases: ["智谱清言", "bigmodel", "glm", "chatglm", "zhipuai"],
+    image: "cogview-3-flash", imgBase: "https://open.bigmodel.cn/api/paas/v4", imgProto: "openai",
+    video: "cogvideox-flash", vidBase: "https://open.bigmodel.cn/api/paas/v4/videos/generations", vidProto: "zhipu",
+    apply: "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+    tip: "手机号注册→实名→创建 API Key，画图和视频都永久免费",
+  },
+  siliconflow: {
+    label: "硅基流动", aliases: ["硅基", "silicon", "kolors", "可图"],
+    image: "Kwai-Kolors/Kolors", imgBase: "https://api.siliconflow.cn/v1", imgProto: "openai",
+    video: null, vidProto: null,
+    apply: "https://cloud.siliconflow.cn/account/ak",
+    tip: "手机号注册即送 16 元赠金，Kolors 画图免费",
+  },
+  tongyi: {
+    label: "通义万相", aliases: ["通义", "万相", "阿里", "阿里云", "阿里云百炼", "百炼", "dashscope", "wanx", "qwen", "通义千问"],
+    image: "wanx2.1-t2i-turbo", imgBase: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis", imgProto: "dashscope",
+    video: "wanx2.1-t2v-turbo", i2vModel: "wanx2.1-i2v-turbo",
+    vidBase: "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis", vidProto: "dashscope",
+    apply: "https://bailian.console.aliyun.com/?apiKey=1",
+    tip: "阿里云百炼控制台创建 API-KEY（sk- 开头），新用户有免费额度；万相 2.1 画质很强",
+  },
+  ark: {
+    label: "火山方舟(即梦)", aliases: ["火山", "火山方舟", "即梦", "即梦AI", "豆包", "doubao", "seedream", "volcengine"],
+    image: "doubao-seedream-3-0-t2i-250415", imgBase: "https://ark.cn-beijing.volces.com/api/v3", imgProto: "openai", imgSizeFields: ["size"],
+    video: null, vidProto: null,
+    apply: "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+    tip: "开通方舟后创建 API Key；seedream 模型需要先在控制台开通",
+  },
+};
+function artKeys(cfg) { return (cfg.keys = cfg.keys || {}); }
+
+/* 取平台配置：内置预设可被 cfg.providers[id] 里的 baseUrl/model 覆盖 */
+function artProvider(id, cfg) {
+  cfg = cfg || artConfig();
+  const B = ART_PRESETS[id] || null;
+  const C = (cfg.providers || {})[id] || null;
+  if (!B && !C) return null;
+  const p = Object.assign({ id: id, label: id, aliases: [], imgProto: "openai" }, B || {});
+  if (C) {
+    if (C.label && !B) p.label = C.label;
+    if (C.baseUrl) p.imgBase = C.baseUrl;
+    if (C.model) p.image = C.model;
+    if (C.proto) p.imgProto = C.proto;
+    if (C.videoBaseUrl) p.vidBase = C.videoBaseUrl;
+    if (C.videoModel) p.video = C.videoModel;
+    if (C.videoProto) p.vidProto = C.videoProto;
+    if (C.i2vModel) p.i2vModel = C.i2vModel;
+    if (!B) { p.custom = true; p.apply = C.apply || ""; p.tip = C.tip || "自定义接口"; }
+  }
+  return p;
+}
+function artSlug(name) {
+  const s = String(name || "").toLowerCase().replace(/[\s_\-·.]+/g, "-").replace(/[^a-z0-9\u4e00-\u9fa5-]/g, "").replace(/^-+|-+$/g, "");
+  return s || ("myapi-" + Date.now().toString(36));
+}
+function artNorm(s) { return String(s || "").toLowerCase().replace(/[\s_\-·()（）【】\[\]\/]/g, ""); }
+/* 平台名解析：先精确匹配 id/中文名/别名，再模糊包含。认不出返回 null */
+function resolveArtProvider(name, cfg) {
+  const raw = String(name || "").trim();
+  if (!raw) return null;
+  cfg = cfg || artConfig();
+  const low = artNorm(raw);
+  const builtin = Object.keys(ART_PRESETS);
+  const customs = Object.keys(cfg.providers || {});
+  const names = (id) => {
+    if (ART_PRESETS[id]) return [id, ART_PRESETS[id].label].concat(ART_PRESETS[id].aliases || []);
+    const c = (cfg.providers || {})[id] || {};
+    return [id, c.label || ""];
+  };
+  for (const id of builtin.concat(customs)) if (names(id).some((n) => artNorm(n) === low)) return id;
+  for (const id of builtin.concat(customs)) if (names(id).some((n) => n && (artNorm(n).length > 1) && (low.includes(artNorm(n)) || artNorm(n).includes(low)))) return id;
+  return null;
+}
+function knownArtNames(cfg) {
+  const a = Object.keys(ART_PRESETS).map((id) => ART_PRESETS[id].label + "(" + id + ")");
+  const c = Object.keys((cfg || artConfig()).providers || {});
+  return a.concat(c.map((id) => ((cfg || artConfig()).providers[id].label || id) + "(" + id + ")")).join("、");
+}
+/* 已配 key 的平台，按优先级：显式 imageProvider → 其他已配 key 的（内置在前，自定义在后） */
+function configuredArtProviders(cfg) {
+  const ks = artKeys(cfg);
+  const out = [];
+  for (const id of Object.keys(ART_PRESETS)) if (ks[id]) out.push(id);
+  for (const id of Object.keys(cfg.providers || {})) if (ks[id] && !out.includes(id)) out.push(id);
+  return out;
+}
+/* 生图接口地址：给了完整端点就用原样，给了域名/根路径就补全 */
+function imgEndpoint(P) {
+  const b = String(P.imgBase || "").trim().replace(/\/+$/, "");
+  if (!b) return "";
+  if (/generations$|image-synthesis$/i.test(b)) return b;
+  try { const u = new URL(b); if (!u.pathname || u.pathname === "/") return b + "/v1/images/generations"; } catch (e) { /* 非 URL 原样拼接 */ }
+  return b + "/images/generations";
+}
+/* 从各家应答里挑出图片：data[0].b64_json/url、output.results[0].url、images[0].url */
+function artPickImage(j) {
+  const d = j && j.data && j.data[0];
+  if (d) { if (d.b64_json) return { b64: d.b64_json }; if (d.url) return { url: d.url }; }
+  const o = j && j.output;
+  if (o) {
+    const rs = o.results || o.result;
+    const r0 = Array.isArray(rs) ? rs[0] : rs;
+    if (r0) { if (r0.b64_image) return { b64: r0.b64_image }; if (r0.url) return { url: r0.url }; }
+  }
+  if (j && j.images && j.images[0] && j.images[0].url) return { url: j.images[0].url };
+  if (j && j.url) return { url: j.url };
+  return null;
+}
+async function artDownload(k) {
+  if (k.b64) return Buffer.from(k.b64, "base64");
+  const res = await netFetch(k.url, { signal: AbortSignal.timeout(150000) });
+  if (!res.ok) throw new Error("下载生成结果失败（" + res.status + "）");
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/* OpenAI 兼容生图（智谱/硅基流动/方舟/任意自定义接口通用），返回图片 buffer */
+async function artImgViaCompat(P, key, prompt, w, h) {
+  const body = { model: P.image, prompt: prompt, n: 1 };
+  const fields = P.imgSizeFields || ["size", "image_size"];
+  for (const f of fields) body[f] = w + "x" + h;
+  const res = await netFetch(imgEndpoint(P), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180000),
+  });
+  if (!res.ok) {
+    const t = (await res.text().catch(() => "")).slice(0, 300);
+    if (res.status === 401 || res.status === 403) throw new Error("鉴权失败（" + res.status + "），key 可能不对：" + t);
+    throw new Error("接口返回 " + res.status + "：" + t);
+  }
+  const j = await res.json().catch(() => ({}));
+  const pick = artPickImage(j);
+  if (!pick) throw new Error("接口返回里没有图片数据（既没有 b64_json 也没有 url）：" + JSON.stringify(j).slice(0, 160));
+  return artDownload(pick);
+}
+
+/* 阿里云百炼/通义万相：异步任务——提交拿 task_id → 轮询 → 下载 */
+async function artImgViaDashScope(P, key, prompt, w, h) {
+  const post = () => netFetch(imgEndpoint(P), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key, "X-DashScope-Async": "enable" },
+    body: JSON.stringify({ model: P.image, input: { prompt: prompt }, parameters: { size: w + "*" + h, n: 1, prompt_extend: true } }),
+    signal: AbortSignal.timeout(60000),
+  });
+  let res = await post();
+  if (res.status === 429) { await sleep(4000); res = await post(); }
+  if (!res.ok) {
+    const t = (await res.text().catch(() => "")).slice(0, 300);
+    if (res.status === 401 || res.status === 403) throw new Error("鉴权失败（" + res.status + "），key 可能不对或没开通模型：" + t);
+    throw new Error("接口返回 " + res.status + "：" + t);
+  }
+  const j = await res.json().catch(() => ({}));
+  const direct = artPickImage(j);
+  if (direct) return artDownload(direct);                                  /* 少数模型同步返回 */
+  const taskId = (j.output && j.output.task_id) || j.task_id;
+  if (!taskId) throw new Error("没返回任务号：" + JSON.stringify(j).slice(0, 200));
+  const out = await dashscopeWait(P.imgBase, key, taskId, "draw_image");
+  const pick = artPickImage({ output: out });
+  if (!pick) throw new Error("任务完成但没拿到图片地址：" + JSON.stringify(out).slice(0, 200));
+  return artDownload(pick);
+}
+
+/* 百炼异步任务轮询（图片/视频共用）：SUCCEEDED 返回 output */
+async function dashscopeWait(base, key, taskId, tag) {
+  let origin = "https://dashscope.aliyuncs.com";
+  try { origin = new URL(String(base)).origin; } catch (e) { /* 用默认域名 */ }
+  const url = origin + "/api/v1/tasks/" + taskId;
+  const deadline = Date.now() + 12 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await sleep(4000);
+    const r = await netFetch(url, { headers: { Authorization: "Bearer " + key }, signal: AbortSignal.timeout(30000) });
+    const j = await r.json().catch(() => ({}));
+    const st = (j.output && j.output.task_status) || j.task_status || "";
+    log("dashscope poll", tag, st);
+    if (st === "SUCCEEDED" || st === "SUCCESS") return j.output || {};
+    if (st === "FAILED" || st === "CANCELED" || st === "UNKNOWN") throw new Error("生成失败：" + JSON.stringify(j.output || j).slice(0, 240));
+  }
+  throw new Error("等了 12 分钟还没出结果（接口排队慢），稍后再试；任务号：" + taskId);
+}
+
+/* 智谱视频（文生视频/图生视频共用）：提交任务 → 轮询 → 下载 mp4 到作品集 */
+async function zhipuVideoRun(P, key, body, tag) {
+  if (hooks.petAct) { try { hooks.petAct("think"); } catch (e) {} }
+  let j = null, lastSubErr = "";
+  for (let i = 0; i < 4; i++) {
+    if (i) await sleep(20000 * i);                     /* 限流退避：20s/40s/60s */
+    const sub = await netFetch(P.vidBase, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!sub.ok) {
+      const t = (await sub.text().catch(() => "")).slice(0, 300);
+      if (sub.status === 401 || sub.status === 403) throw new Error("鉴权失败（" + sub.status + "），key 可能不对或还没实名：" + t);
+      lastSubErr = sub.status + "：" + t;
+      log("zhipuVideo submit retry", i, lastSubErr);
+      if (sub.status === 429 || /1305|访问量过大|繁忙/.test(t)) continue;   /* 限流：退避重试 */
+      throw new Error("视频接口提交失败 " + lastSubErr);
+    }
+    j = await sub.json().catch(() => ({}));
+    if (j.id) break;
+    lastSubErr = "没返回任务号：" + JSON.stringify(j).slice(0, 200);
+  }
+  if (!j || !j.id) throw new Error("视频通道当前排队太满（该模型访问量过大），自动重试 3 次仍没排上，过几分钟再让鱼试一次吧" +
+    (lastSubErr ? "（最后错误：" + lastSubErr.slice(0, 150) + "）" : ""));
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let vurl = null;
+  while (Date.now() < deadline) {
+    await sleep(5000);
+    const s = await netFetch(P.vidBase + "?id=" + j.id, { headers: { Authorization: "Bearer " + key }, signal: AbortSignal.timeout(30000) });
+    const sj = await s.json().catch(() => ({}));
+    const st = sj.task_status || "";
+    log("zhipuVideo poll", tag, st);
+    if (st === "SUCCESS") { const vr = sj.video_result && sj.video_result[0]; vurl = (vr && vr.url) || null; break; }
+    if (st === "FAIL" || st === "FAILED") throw new Error("视频生成失败：" + JSON.stringify(sj).slice(0, 200));
+  }
+  if (!vurl) throw new Error("等了 10 分钟还没出片（免费档排队慢），稍后让鱼再试一次；任务号：" + j.id);
+  const vres = await netFetch(vurl, { signal: AbortSignal.timeout(180000) });
+  const vbuf = Buffer.from(await vres.arrayBuffer());
+  fs.mkdirSync(ART_DIR, { recursive: true });
+  const f = path.join(ART_DIR, "vid-" + Date.now() + ".mp4");
+  fs.writeFileSync(f, vbuf);
+  if (hooks.petAct) { try { hooks.petAct("done"); } catch (e) {} }
+  log("zhipuVideo", tag, vbuf.length + "B ->", f);
+  return { path: f, size: vbuf.length, videoUrl: vurl, taskId: j.id };
+}
+
+/* 百炼（通义万相）视频：文生视频 / 图生视频 */
+async function dashscopeVideoRun(P, key, kind, o) {
+  const model = (kind === "image" ? (P.i2vModel || P.video) : P.video) || "wanx2.1-t2v-turbo";
+  const input = { prompt: String(o.prompt || "") };
+  if (kind === "image") input.img_url = "data:" + o.mime + ";base64," + o.imageBuf.toString("base64");
+  const parameters = { size: String(o.size || "1280*720").replace("x", "*"), duration: Math.min(10, Math.max(1, Math.round(Number(o.duration) || 5))) };
+  if (hooks.petAct) { try { hooks.petAct("think"); } catch (e) {} }
+  const post = () => netFetch(P.vidBase, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key, "X-DashScope-Async": "enable" },
+    body: JSON.stringify({ model: model, input: input, parameters: parameters }),
+    signal: AbortSignal.timeout(60000),
+  });
+  let res = await post();
+  if (res.status === 429) { await sleep(5000); res = await post(); }
+  if (!res.ok) {
+    const t = (await res.text().catch(() => "")).slice(0, 300);
+    if (res.status === 401 || res.status === 403) throw new Error("鉴权失败（" + res.status + "），key 可能不对或没开通该视频模型：" + t);
+    throw new Error("视频接口返回 " + res.status + "：" + t);
+  }
+  const j = await res.json().catch(() => ({}));
+  const taskId = (j.output && j.output.task_id) || j.task_id;
+  if (!taskId) throw new Error("没返回任务号：" + JSON.stringify(j).slice(0, 200));
+  const out = await dashscopeWait(P.vidBase, key, taskId, "video");
+  const vurl = out.video_url || (out.results && out.results[0] && out.results[0].url);
+  if (!vurl) throw new Error("任务完成但没拿到视频地址：" + JSON.stringify(out).slice(0, 220));
+  const vres = await netFetch(vurl, { signal: AbortSignal.timeout(180000) });
+  const vbuf = Buffer.from(await vres.arrayBuffer());
+  fs.mkdirSync(ART_DIR, { recursive: true });
+  const f = path.join(ART_DIR, "vid-" + Date.now() + ".mp4");
+  fs.writeFileSync(f, vbuf);
+  if (hooks.petAct) { try { hooks.petAct("done"); } catch (e) {} }
+  log("dashscopeVideo", model, vbuf.length + "B ->", f);
+  return { path: f, size: vbuf.length, videoUrl: vurl, taskId: taskId, model: model };
+}
+
+/* 视频统一入口：按 videoProvider（或显式 provider）路由到对应平台 */
+async function artVideoRun(cfg, kind, o) {
+  const name = (o && o.provider) || cfg.videoProvider || "zhipu";
+  const id = resolveArtProvider(name, cfg);
+  const P = artProvider(id, cfg);
+  if (!P) throw new Error("不认识的视频平台「" + name + "」。可用：" + knownArtNames(cfg));
+  const key = artKeys(cfg)[id];
+  if (!key) throw new Error("还没配「" + P.label + "」的 key（视频要用）。" + (P.apply ? "请主人在 " + P.apply + " 注册（免费），" : "") + "拿到 API Key 后调 art_config {\"provider\":\"" + id + "\",\"key\":\"...\"} 保存，再重试");
+  const proto = P.vidProto || (id === "zhipu" ? "zhipu" : null);
+  if (!P.vidBase || !proto) throw new Error("「" + P.label + "」只能画图，还没接视频接口。视频可以用智谱（免费）或通义万相（" + (ART_PRESETS.tongyi.tip) + "）");
+  if (proto === "dashscope") return dashscopeVideoRun(P, key, kind, o);
+  const body = { model: P.video || "cogvideox-flash", prompt: String(o.prompt || ""), duration: String(o.duration || "5") };
+  if (kind === "image") body.image_url = "data:" + o.mime + ";base64," + o.imageBuf.toString("base64");
+  if (o.size) body.size = String(o.size);
+  if (o.quality) body.quality = String(o.quality);
+  if (o.with_audio !== undefined) body.with_audio = !!o.with_audio;
+  return zhipuVideoRun(P, key, body, o.tag || "video");
+}
+/* 出图/出片统一走 Chromium 网络栈：自动跟随系统代理，比 Node fetch 在各种网络环境都稳 */
+function netFetch(url, opt) {
+  try { const { net } = require("electron"); if (net && net.fetch) return net.fetch(url, opt); } catch (e) {}
+  return fetch(url, opt);
+}
+
 let log = () => {};
 let hooks = {};   // main.js 注入：{ fireTask }
 
 /* ---------- 权限 ---------- */
-let state = { enabled: true };   // 默认开启（用户明确要求放开），可右键菜单关闭
+let state = { enabled: true, confirmCmd: true };   // 默认开启（用户明确要求放开），可右键菜单关闭；跑命令前默认要确认
 function loadPerm() {
   try {
     const raw = JSON.parse(fs.readFileSync(PERM_PATH, "utf8"));
     if (typeof raw.enabled === "boolean") state.enabled = raw.enabled;
+    if (typeof raw.confirmCmd === "boolean") state.confirmCmd = raw.confirmCmd;
   } catch (e) { /* 首次运行用默认值 */ }
 }
 function savePerm() {
@@ -207,18 +532,18 @@ function psWindows(maxAge) {
   return new Promise((resolve) => {
     const cmd = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; " +
       "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | " +
-      "ForEach-Object { '{0}|{1}|{2}' -f $_.Id, $_.MainWindowHandle, $_.MainWindowTitle }";
+      "ForEach-Object { '{0}|{1}|{2}|{3}' -f $_.Id, $_.MainWindowHandle, $_.ProcessName, $_.MainWindowTitle }";
     execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd],
       { windowsHide: true, timeout: 8000, encoding: "utf8", maxBuffer: 2 * 1024 * 1024 },
       (err, stdout) => {
         if (err) { resolve(psCache.list); return; }
         const out = [];
         for (const line of String(stdout || "").split(/\r?\n/)) {
-          const m = /^\s*(\d+)\|(\d+)\|(.*)$/.exec(line);
+          const m = /^\s*(\d+)\|(\d+)\|([^|]*)\|(.*)$/.exec(line);
           if (!m) continue;
-          const title = m[3].trim();
+          const title = m[4].trim();
           if (!title) continue;
-          out.push({ pid: m[1], handle: m[2], title });
+          out.push({ pid: m[1], handle: m[2], proc: m[3].trim(), title });
         }
         if (out.length) psCache = { at: Date.now(), list: out };
         resolve(out);
@@ -226,13 +551,51 @@ function psWindows(maxAge) {
   });
 }
 
+/* 常用软件中文名 → 进程名（标题是中英混合时按进程名兜底，比如"无标题 - Notepad"） */
+const PROC_ALIAS = {
+  记事本: "notepad", 计算器: "calc", 画图: "mspaint", 画图板: "mspaint",
+  浏览器: "msedge", 边缘: "msedge", 任务管理器: "taskmgr", 资源管理器: "explorer",
+  文件资源管理器: "explorer", 命令提示符: "cmd", 终端: "windowsterminal",
+  设置: "systemsettings", 微信: "wechat", 企业微信: "wework", qq: "qq",
+  word: "winword", excel: "excel", ppt: "powerpnt", powerpoint: "powerpnt", wps: "wps",
+};
+
+function matchWindow(w, kw) {
+  const t = w.title.toLowerCase();
+  const p = (w.proc || "").toLowerCase();
+  if (t.includes(kw) || p.includes(kw)) return true;
+  const alias = PROC_ALIAS[kw];
+  return !!alias && (p.includes(alias) || t.includes(alias));
+}
+
+/* ---------- 窗口矩形（物理像素）----------
+   用 nut-js 的 Window.region（libnut 在 Electron 进程内直接调 GetWindowRect，
+   进程是 per-monitor DPI aware，返回物理像素）。不走 PowerShell：
+   沙箱/受限环境里 Add-Type 编译 C# 会被拦（实测踩过）。 */
+async function winRect(handle) {
+  const h = String(handle || "").replace(/\D/g, "");
+  if (!h || !nut) return null;
+  try {
+    for (const w of await nut.getWindows()) {
+      if (String(nutHandle(w)) === h) {
+        const r = await w.region;
+        if (r && r.width > 0 && r.height > 0) {
+          return { left: r.left, top: r.top, right: r.left + r.width, bottom: r.top + r.height };
+        }
+      }
+    }
+  } catch (e) { log("winRect 失败:", e && e.message); }
+  return null;
+}
+
 async function focusWindowByTitle(keyword) {
   const kw = String(keyword || "").trim().toLowerCase();
   if (!kw) return null;
 
   // ① 先用 PowerShell 的准确标题匹配（中文、符号都没问题），命中就按句柄拉前台
+  //    标题匹配不上再看进程名（标题常是中英混合，如"无标题 - Notepad"）
   const ps = await psWindows();
-  const hit = ps.find((w) => !isOwnHandle(w.handle) && w.title.toLowerCase().includes(kw));
+  const hit = ps.find((w) => !isOwnHandle(w.handle) && matchWindow(w, kw));
   if (hit) {
     if (await focusByHandle(hit.handle)) {
       lastTargetTitle = hit.title;
@@ -774,6 +1137,116 @@ function resolveRegion(region, full) {
   return { used: box, rect: { x: box.x, y: box.y, width: box.w, height: box.h } };
 }
 
+/* ---------- 1.1.12 写代码三件套：run_cmd / run_code / edit_file ---------- */
+/* 危险命令黑名单：命中直接拒绝，不给"主人点了允许"的机会（这些点了也救不回来） */
+const CMD_BLOCK = [
+  { re: /\bformat\s+[a-z]:/i, why: "格式化磁盘" },
+  { re: /\bdiskpart\b/i, why: "磁盘分区操作" },
+  { re: /\bbcdedit\b/i, why: "改启动项" },
+  { re: /\bshutdown\b/i, why: "关机/重启" },
+  { re: /\b(restart|stop)-computer\b/i, why: "关机/重启" },
+  { re: /\bvssadmin\b[\s\S]*\bdelete\b/i, why: "删卷影备份" },
+  { re: /\bcipher\s+\/w/i, why: "擦除磁盘空闲区" },
+  { re: /\breg\s+delete\b[\s\S]*\b(hklm|hkey_local_machine)\b/i, why: "删注册表项" },
+  { re: /\brm\b[\s\S]*\s-(rf|fr)\s+(\/|~|\$home)\s*$/i, why: "递归删根目录" },
+  { re: /\b(rd|rmdir)\s+\/s[\s\S]*[a-z]:\\?\s*$/i, why: "递归删整盘" },
+  { re: /\bnet\s+user\b[\s\S]*\/add/i, why: "建系统账户" },
+  { re: /\btaskkill\b[\s\S]*\/im\s+(explorer|winlogon|csrss|wininit|services)\.exe/i, why: "杀系统关键进程" },
+];
+function dangerCheck(cmd) {
+  for (const b of CMD_BLOCK) {
+    if (b.re.test(cmd)) {
+      const e = new Error("这条命令被拦下了（" + b.why + "）：" + String(cmd).slice(0, 100) + "。这种操作一旦执行没法撤销，鱼不能碰。真的需要请主人自己操作");
+      e.code = "CMD_BLOCKED";
+      throw e;
+    }
+  }
+}
+
+/* PowerShell 前置：强制 UTF-8 输出，否则中文全是乱码 */
+const PS_PRELUDE = "chcp 65001 > $null; [Console]::OutputEncoding=[Text.Encoding]::UTF8; $OutputEncoding=[Text.Encoding]::UTF8; ";
+
+/** 执行一条 PowerShell 命令，永远 resolve（不抛），把 exitCode/stdout/stderr 都带回来 */
+function execCmd(cmd, opts) {
+  const o = opts || {};
+  const timeout = Math.max(1000, Math.min(600000, Number(o.timeout) || 120000));
+  const maxBuffer = Math.max(1024 * 1024, Math.min(32 * 1024 * 1024, Number(o.maxBuffer) || 8 * 1024 * 1024));
+  const cwd = o.cwd || sysPath("home") || HOME;
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    execFile("powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-NoLogo", "-Command", PS_PRELUDE + cmd],
+      { cwd, timeout, maxBuffer, windowsHide: true, encoding: "utf8" },
+      (err, stdout, stderr) => {
+        let exitCode = 0;
+        if (err) {
+          if (err.killed) exitCode = "timeout";
+          else if (typeof err.code === "number") exitCode = err.code;
+          else exitCode = -1;
+        }
+        const so = String(stdout || "");
+        const se = String(stderr || "");
+        resolve({
+          cmd, cwd, exitCode,
+          ok: exitCode === 0,
+          stdout: so.slice(0, 20000),
+          stderr: se.slice(0, 8000),
+          ms: Date.now() - t0,
+          timedOut: !!(err && err.killed),
+          truncated: so.length > 20000,
+        });
+      });
+  });
+}
+
+/** 执行前的确认窗：原生模态框，渲染层绕不过去。DFY_CMD_AUTOYES 只给自动化测试用 */
+async function confirmRun(cmd, cwd) {
+  if (process.env.DFY_CMD_AUTOYES === "1") return true;
+  if (state.confirmCmd === false) return true;
+  let dialog = null, win = null;
+  try {
+    const E = require("electron");
+    dialog = E.dialog;
+    const ws = E.BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible());
+    /* 优先挂在聊天窗上：对话框会跟它居中，位置自然；聊天窗没开才挂桌宠（那是个小窗，居中会贴边） */
+    win = ws.find((w) => { try { return String(w.webContents.getURL()).includes("chat.html"); } catch (e) { return false; } })
+      || ws.find((w) => w.getBounds().width > 500) || ws[0] || null;
+  } catch (e) { return true; }   /* 非图形环境（测试）直接放行 */
+  if (!dialog) return true;
+  const opts = {
+    type: "question",
+    title: "大肥鱼想在你电脑上跑一条命令",
+    message: String(cmd).slice(0, 300),
+    detail: "工作目录：" + cwd + "\n\n点「允许执行」才会真的跑。看不懂就点取消。",
+    buttons: ["允许执行", "取消"],
+    defaultId: 0, cancelId: 1, noLink: true,
+    checkboxLabel: "以后跑命令都不再问我（危险，建议先看它跑几次再勾）",
+    checkboxChecked: false,
+  };
+  const r = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+  if (r && r.checkboxChecked) { state.confirmCmd = false; savePerm(); log("cmd confirm -> off"); }
+  if (!r || r.response !== 0) throw new Error("主人取消了这条命令，别重试，先问清楚想干什么");
+  return true;
+}
+
+/* python 可执行名探测（python / py / python3） */
+let PY_EXE;
+async function pyExe() {
+  if (PY_EXE !== undefined) return PY_EXE;
+  for (const c of ["python", "py", "python3"]) {
+    const ok = await new Promise((res) => {
+      execFile(c, ["--version"], { timeout: 8000, windowsHide: true }, (e, so, se) => res(!e && /Python\s+\d/i.test(String(so || "") + String(se || ""))));
+    });
+    if (ok) { PY_EXE = c; return c; }
+  }
+  PY_EXE = "";
+  return "";
+}
+
+const CODE_DIR = path.join(WORK_DIR, "code");
+
+const taughtActs = new Set();   /* 本次运行内教给桌宠的自学动作名（pet_teach 成功后记录） */
+
 const TOOLS = {
   async screen_info() {
     return await screenInfo();
@@ -796,17 +1269,54 @@ const TOOLS = {
     return { x: p.x, y: p.y };
   },
 
+  /* 坐标归一：支持两种来源
+     ① 默认——物理像素（nut / GetWindowRect / DWM / 截图原始分辨率都是这套）
+     ② space:"shot"——模型从最近一张截图上量出来的坐标，按截图与物理尺寸的比例自动换算 */
+  async resolveXY(a) {
+    let x = Number(a && a.x), y = Number(a && a.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (a && a.space === "shot" && lastShot && lastShot.w) {
+      x = x * (lastShot.physW / lastShot.w);
+      y = y * (lastShot.physH / lastShot.h);
+    }
+    return { x: Math.round(x), y: Math.round(y) };
+  },
+
   async mouse_move(a) {
-    const x = Math.round(Number(a.x)), y = Math.round(Number(a.y));
-    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("mouse_move 需要数字 x / y");
+    const p = await TOOLS.resolveXY(a);
+    if (!p) throw new Error('mouse_move 需要数字 x / y（从截图上量出来的坐标请带 "space":"shot"，自动换算成屏幕坐标）');
     const before = await nut.mouse.getPosition();
-    await nut.mouse.setPosition(new nut.Point(x, y));
+    await nut.mouse.setPosition(new nut.Point(p.x, p.y));
     const after = await nut.mouse.getPosition();
     return { from: { x: before.x, y: before.y }, to: { x: after.x, y: after.y } };
   },
 
   async mouse_click(a) {
-    if (a.x !== undefined && a.y !== undefined) await TOOLS.mouse_move(a);
+    let winNote;
+    if (a.title !== undefined && a.title !== null && String(a.title).trim()) {
+      /* 窗口相对点击：先聚焦，再按窗口可见区换算（豆包方案1：窗口句柄+相对坐标） */
+      const t = await focusWindowByTitle(a.title);
+      if (!t) throw new Error('没找到窗口「' + a.title + "」，用 screenshot 确认软件真的开着，标题以窗口标题栏为准");
+      await new Promise((r) => setTimeout(r, Math.max(200, Math.min(3000, Number(a.wait) || 450))));  // 等窗口动画/渲染
+      /* 句柄以 psWindows 现查为准（nut 侧句柄枚举在这台机器不可靠） */
+      const kw = String(a.title).trim().toLowerCase();
+      const win = (await psWindows()).find((w) => !isOwnHandle(w.handle) && matchWindow(w, kw));
+      const rect = await winRect(win ? win.handle : lastTargetHandle);
+      if (!rect) throw new Error('拿不到窗口「' + t + "」的位置（可能被最小化了）");
+      let dx, dy;
+      const fx = Number(a.fx), fy = Number(a.fy);
+      if (Number.isFinite(fx) && Number.isFinite(fy)) {        // 比例定位：fx=0.5,fy=0.5 = 窗口正中
+        dx = Math.round((rect.right - rect.left) * fx);
+        dy = Math.round((rect.bottom - rect.top) * fy);
+      } else {
+        dx = Math.round(Number(a.x) || 0);
+        dy = Math.round(Number(a.y) || 0);
+      }
+      await TOOLS.mouse_move({ x: rect.left + dx, y: rect.top + dy });
+      winNote = { window: t, mode: Number.isFinite(fx) ? "比例" : "窗口内偏移" };
+    } else if (a.x !== undefined && a.y !== undefined) {
+      await TOOLS.mouse_move(a);
+    }
     const btn = String(a.button || "left").toLowerCase();
     const b = btn === "right" ? nut.Button.RIGHT : btn === "middle" ? nut.Button.MIDDLE : nut.Button.LEFT;
     const clicks = Math.max(1, Math.min(3, Number(a.clicks) || 1));
@@ -819,7 +1329,85 @@ const TOOLS = {
     if (inChatRect(p0.x, p0.y)) await withChatClickThrough(doClick);
     else await doClick();
     const p = await nut.mouse.getPosition();
-    return { clicked: btn, clicks, at: { x: p.x, y: p.y }, throughChat: inChatRect(p0.x, p0.y) || undefined };
+    return { clicked: btn, clicks, at: { x: p.x, y: p.y }, throughChat: inChatRect(p0.x, p0.y) || undefined,
+      window: winNote ? winNote.window : undefined, mode: winNote ? winNote.mode : undefined };
+  },
+
+  /** 点文字（豆包方案3：图识别定位）：整屏截图 → OCR 拿每行文字包围盒 → 匹配目标文字 → 点中心。
+      按钮会变位、窗口会拖动都没关系；坐标全程物理像素，DPI/缩放天然正确。
+      小字 1 倍分辨率认不出来（实测 12px 全屏 OCR 全乱码）：第一遍全屏没命中，
+      自动切成 2×2 带重叠的四块、各放大 2 倍再扫（和截图局部放大的路子一致）。 */
+  async click_text(a) {
+    const kw = String((a && (a.text || a.keyword)) || "").trim();
+    if (!kw) throw new Error('click_text 需要 text，例如 {"text":"设置"}');
+    const { desktopCapturer, screen } = require("electron");
+    const disp = screen.getPrimaryDisplay();
+    const w = Math.round(disp.size.width * disp.scaleFactor);
+    const h = Math.round(disp.size.height * disp.scaleFactor);
+    const src = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: w, height: h } });
+    if (!src.length) throw new Error("没拿到屏幕画面");
+    const img = src[0].thumbnail;
+    const full = img.getSize();
+    fs.mkdirSync(SHOT_DIR, { recursive: true });
+    const clean = (t) => String(t || "").replace(/[ \t]{2,}/g, " ")
+      .replace(/([\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])[ ]+(?=[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef])/g, "$1").trim();
+    const hits = [];   // { t, x, y, w, h } 全部按物理像素
+    const scan = async (imgObj, offsetX, offsetY, shrink) => {
+      const f = path.join(SHOT_DIR, "ctext-" + Date.now() + "-" + Math.floor(Math.random() * 1e6) + ".png");
+      fs.writeFileSync(f, imgObj.toPNG());
+      const r = await videoMod.ocrFile(f, 100);
+      if (!r.ok) return;
+      const k = (100 / (r.scale || 100)) / shrink;   // OCR 坐标 → 物理像素（tile 预放大 shrink 倍再除回去）
+      for (const l of r.lines || []) {
+        const t = clean(l.text);
+        if (!t) continue;
+        hits.push({ t, x: offsetX + (l.x || 0) * k, y: offsetY + (l.y || 0) * k, w: (l.w || 0) * k, h: (l.h || 0) * k });
+      }
+    };
+    /* 第一遍：整屏 1 倍（大字直接命中，最快） */
+    await scan(img, 0, 0, 1);
+    let best = null;
+    for (const it of hits) {
+      if (!it.t.includes(kw)) continue;
+      const area = it.w * it.h;
+      if (!best || area < best.area) best = { l: it, area };
+    }
+    /* 第二遍：2×2 带重叠四块，各放大 2 倍（小字/低对比度场景） */
+    if (!best) {
+      const zoom = 2;
+      const W = full.width, H = full.height;
+      const tiles = [[0, 0, 0.68, 0.68], [0.32, 0, 0.68, 0.68], [0, 0.32, 0.68, 0.68], [0.32, 0.32, 0.68, 0.68]];
+      for (const [fx, fy, fw, fh] of tiles) {
+        const rx = Math.max(0, Math.round(fx * W)), ry = Math.max(0, Math.round(fy * H));
+        const rw = Math.min(W - rx, Math.round(fw * W)), rh = Math.min(H - ry, Math.round(fh * H));
+        if (rw < 40 || rh < 40) continue;
+        let tile = img.crop({ x: rx, y: ry, width: rw, height: rh });
+        tile = tile.resize({ width: Math.round(rw * zoom), height: Math.round(rh * zoom) });
+        await scan(tile, rx, ry, zoom);
+        for (const it of hits) {
+          if (it.t.includes(kw)) {
+            const area = it.w * it.h;
+            if (!best || area < best.area) best = { l: it, area };
+          }
+        }
+        if (best) break;   // 命中就停，省时间
+      }
+    }
+    if (!best) throw new Error('屏幕上没找到「' + kw + "」。OCR 可能认错字：先 ocr_screen（可带 region 局部放大）看原文这几个字长什么样，再按原文重试");
+    const l = best.l;
+    const idx = l.t.indexOf(kw);
+    const ratio = l.t.length > kw.length ? (idx + kw.length / 2) / l.t.length : 0.5;  // 关键词在行内的相对位置
+    const x = Math.round(l.x + l.w * ratio);
+    const y = Math.round(l.y + l.h / 2);
+    await TOOLS.mouse_move({ x, y });
+    await new Promise((r2) => setTimeout(r2, Math.max(0, Math.min(3000, Number(a.wait) || 0))));
+    const btn = String(a.button || "left").toLowerCase();
+    const b = btn === "right" ? nut.Button.RIGHT : btn === "middle" ? nut.Button.MIDDLE : nut.Button.LEFT;
+    const clicks = Math.max(1, Math.min(3, Number(a.clicks) || 1));
+    const p0 = await nut.mouse.getPosition();
+    const doClick = async () => { if (clicks >= 2) await nut.mouse.doubleClick(b); else await nut.mouse.click(b); };
+    if (inChatRect(p0.x, p0.y)) await withChatClickThrough(doClick); else await doClick();
+    return { clicked: kw, at: { x, y }, line: l.t.slice(0, 30), clicks, note: "已点在「" + kw + "」文字中心，建议 screenshot 确认效果" };
   },
 
   async mouse_scroll(a) {
@@ -1225,9 +1813,11 @@ const TOOLS = {
     const phys = img.getSize();
     // 模型看的永远是压缩后的小图，region 坐标按"上一张截图的坐标系"换算回物理像素
     const region = resolveRegion(a && (a.region || a.rect), phys);
-    // 压缩：长边压到 1280 以内 + JPEG 质量逐级下降，直到 200KB 以内（AI 和历史记录都装得下）
-    const MAX_DIM = 1280, LIMIT = 200 * 1024;
+    // 压缩：整屏长边 1568 以内 + JPEG 质量从 88 逐级下降，直到 384KB 以内（模型和历史记录都装得下）
+    // ★整屏图只是"缩略图"：看布局/找窗口够用，读小字必须走 ocr_screen
+    const MAX_DIM = 1568, LIMIT = 384 * 1024;
     let zoomed = false;
+    let buf, fmt;
     if (region) {
       img = img.crop(region.rect);
       const d = img.getSize();
@@ -1236,31 +1826,34 @@ const TOOLS = {
         img = img.resize({ width: d.width * 2, height: d.height * 2 });
         zoomed = true;
       }
+      // 局部图无损 PNG：放大之后不能再被 JPEG 二次压糊
+      buf = img.toPNG(); fmt = "png";
     } else {
       const dims = img.getSize();
       if (Math.max(dims.width, dims.height) > MAX_DIM) {
         img = img.resize({ width: dims.width >= dims.height ? MAX_DIM : undefined, height: dims.height > dims.width ? MAX_DIM : undefined });
       }
-    }
-    let jpeg = null, quality = 82;
-    for (; quality >= 45; quality -= 12) {
-      jpeg = img.toJPEG(quality);
-      if (jpeg.length <= LIMIT) break;
+      let quality = 88;
+      for (; quality >= 55; quality -= 11) {
+        buf = img.toJPEG(quality);
+        if (buf.length <= LIMIT) break;
+      }
+      fmt = "jpeg";
     }
     fs.mkdirSync(SHOT_DIR, { recursive: true });
-    const file = path.join(SHOT_DIR, "shot-" + Date.now() + ".jpg");
-    fs.writeFileSync(file, jpeg);
+    const file = path.join(SHOT_DIR, "shot-" + Date.now() + (fmt === "png" ? ".png" : ".jpg"));
+    fs.writeFileSync(file, buf);
     const size = img.getSize();
     lastShot = { w: size.width, h: size.height, physW: phys.width, physH: phys.height };
-    log("screenshot", file, jpeg.length + "B", "q" + quality, region ? "region" : "full");
+    log("screenshot", file, buf.length + "B", region ? "region" : "full");
     return {
-      path: file, width: size.width, height: size.height, bytes: jpeg.length,
-      format: "jpeg",
+      path: file, width: size.width, height: size.height, bytes: buf.length,
+      format: fmt,
       region: region ? { x: region.used.x, y: region.used.y, w: region.used.w, h: region.used.h, zoomed } : undefined,
       note: region
-        ? (zoomed ? "局部放大截图（已放大 2 倍），小字应该能看清了" : "局部截图") + "，图片直接附在本条结果里"
-        : "已压缩，图片直接附在本条结果里，可以直接看",
-      imageDataUrl: "data:image/jpeg;base64," + jpeg.toString("base64"),
+        ? ((zoomed ? "局部放大截图（已放大 2 倍，无损 PNG），小字应该能看清了" : "局部截图（无损 PNG）") + "，图片直接附在本条结果里")
+        : "已压缩，图片直接附在本条结果里。★这张整屏图是缩略图：看清布局、找窗口、确认状态可以；里面的文字是糊的，不要用眼睛硬读小字——要读屏幕上的字一律用 ocr_screen（可带 region 局部放大）。",
+      imageDataUrl: "data:image/" + (fmt === "png" ? "png" : "jpeg") + ";base64," + buf.toString("base64"),
     };
   },
 
@@ -1289,7 +1882,7 @@ const TOOLS = {
     const f = path.join(SHOT_DIR, "ocr-" + Date.now() + ".png");
     const png = img.toPNG();
     fs.writeFileSync(f, png);
-    const r = await videoMod.ocrFile(f, 150);
+    const r = await videoMod.ocrFile(f, 200);
     if (!r.ok) throw new Error("OCR 失败：" + r.error);
     const size = img.getSize();
     lastShot = { w: size.width, h: size.height, physW: full.width, physH: full.height };
@@ -1439,6 +2032,163 @@ const TOOLS = {
     };
   },
 
+  /** 精确改文件：只换掉指定那段，不用整文件重写（写代码的命门） */
+  async edit_file(a) {
+    if (!a || a.path === undefined || String(a.path).trim() === "") {
+      throw new Error('edit_file 缺少 path。格式：{"path":"桌面\\\\proj\\\\main.py","find":"要改掉的原文","replace":"新内容"}');
+    }
+    const abs = checkWritable(a.path);
+    if (!fs.existsSync(abs)) throw new Error("文件不存在：" + abs + "。要新建文件请用 write_file");
+    const st = fs.statSync(abs);
+    if (st.isDirectory()) throw new Error("这是文件夹不是文件：" + abs);
+    if (st.size > 4 * 1024 * 1024) throw new Error("文件有 " + Math.round(st.size / 1024) + "KB，太大，鱼改不动（先 read_file 看，或让主人手动改）");
+    const raw = fs.readFileSync(abs, "utf8");
+    const crlf = /\r\n/.test(raw);
+    const text = raw.replace(/\r\n/g, "\n");
+    const lines = text.split("\n");
+    const want = a.all === true || a.replaceAll === true || a.global === true;
+
+    const noFind = a.find === undefined && a.old_string === undefined && a.oldText === undefined
+      && a.search === undefined && a.old === undefined;
+
+    /* ① 行号模式：{"line":20,"content":"..."} 改第 20 行 / {"line":20,"delete":true} 删掉这一行 */
+    if (noFind && a.line !== undefined) {
+      const n = Math.round(Number(a.line));
+      if (!(n >= 1 && n <= lines.length)) throw new Error("行号超范围：文件共 " + lines.length + " 行，给的是 " + a.line);
+      if (a.delete === true) lines.splice(n - 1, 1);
+      else {
+        const c = a.content !== undefined ? a.content : (a.replace !== undefined ? a.replace : a.new_string);
+        if (c === undefined) throw new Error('行号模式要带 content（新的那一行内容）：{"path":"...","line":20,"content":"print(1)"}');
+        lines[n - 1] = String(c).replace(/\r?\n$/, "");
+      }
+      const out1 = lines.join("\n");
+      await writeFileSafe(abs, Buffer.from(crlf ? out1.replace(/\n/g, "\r\n") : out1, "utf8"));
+      const st1 = fs.statSync(abs);
+      log("edit_file", abs, a.delete === true ? "delete line " + n : "line " + n, st1.size + "B");
+      return { ok: true, path: abs, replaced: 1, mode: a.delete === true ? "delete-line" : "line", atLine: n,
+        lines: lines.length, bytes: st1.size, note: "第 " + n + " 行" + (a.delete === true ? "已删掉" : "已改好") };
+    }
+
+    let find = a.find !== undefined ? a.find : (a.old_string !== undefined ? a.old_string
+      : (a.oldText !== undefined ? a.oldText : (a.search !== undefined ? a.search : a.old)));
+    let repl = a.replace !== undefined ? a.replace : (a.new_string !== undefined ? a.new_string
+      : (a.newText !== undefined ? a.newText : a.to));
+    if (find === undefined || String(find) === "") {
+      throw new Error('edit_file 需要 find（要改掉的原文），例如 {"path":"...","find":"if a = 1:","replace":"if a == 1:"}。要整篇重写用 write_file');
+    }
+    find = String(find).replace(/\r\n/g, "\n");
+    repl = String(repl === undefined ? "" : repl).replace(/\r\n/g, "\n");
+    if (find === repl) throw new Error("find 和 replace 一模一样，没什么可改的");
+
+    const hits = [];
+    let from = 0, idx;
+    while ((idx = text.indexOf(find, from)) !== -1) {
+      hits.push(text.slice(0, idx).split("\n").length);
+      from = idx + find.length;
+      if (hits.length > 999) break;
+    }
+    if (!hits.length) {
+      const firstLine = find.split("\n").map((s) => s.trim()).filter((s) => s.length >= 4)[0];
+      let similar = "";
+      if (firstLine) {
+        const li = lines.findIndex((l) => l.includes(firstLine.slice(0, 40)));
+        if (li >= 0) similar = "。不过第 " + (li + 1) + " 行有很像的：" + JSON.stringify(lines[li].slice(0, 140));
+      }
+      throw new Error("文件里找不到这段原文" + similar + "。先用 read_file 看真实内容（缩进、全角空格、换行都可能不同），照着抄一遍再改");
+    }
+    if (hits.length > 1 && !want) {
+      throw new Error("这段原文出现了 " + hits.length + " 次（第 " + hits.slice(0, 8).join("、") + " 行），不确定改哪处。多带几行上下文让它唯一，或者加 \"all\":true 全改");
+    }
+
+    const outText = want ? text.split(find).join(repl) : text.replace(find, () => repl);
+    await writeFileSafe(abs, Buffer.from(crlf ? outText.replace(/\n/g, "\r\n") : outText, "utf8"));
+    const st2 = fs.statSync(abs);
+    log("edit_file", abs, "replace x" + (want ? hits.length : 1), "line " + hits[0], st2.size + "B");
+    return { ok: true, path: abs, mode: "replace", replaced: want ? hits.length : 1,
+      atLine: hits[0], lines: outText.split("\n").length, bytes: st2.size,
+      note: want ? "共替换 " + hits.length + " 处" : "只改了第 " + hits[0] + " 行那处，其它没动" };
+  },
+
+  /** 执行一条命令（PowerShell）：拿到真实 stdout/stderr，鱼才能自己跑代码看报错 */
+  async run_cmd(a) {
+    const cmd = String((a && (a.cmd || a.command || a.script || a.shell)) || "").trim();
+    if (!cmd) throw new Error('run_cmd 需要 cmd，例如 {"cmd":"python main.py","cwd":"桌面\\\\proj"}');
+    if (cmd.length > 8000) throw new Error("命令有 " + cmd.length + " 字，太长（多行脚本请先 write_file 写进文件，再 run_cmd 执行这个文件）");
+    dangerCheck(cmd);
+
+    let cwd = a && (a.cwd || a.dir || a.workdir);
+    if (cwd) {
+      cwd = checkWritable(cwd);
+      if (!fs.existsSync(cwd)) throw new Error("工作目录不存在：" + cwd + "（先 make_dir 建，或用 list_dir 确认路径）");
+      if (!fs.statSync(cwd).isDirectory()) throw new Error("这不是文件夹：" + cwd);
+    } else {
+      cwd = sysPath("home") || HOME;
+    }
+
+    const timeoutSec = Math.max(1, Math.min(600, Number((a && a.timeout) || 120)));
+    await confirmRun(cmd, cwd);
+    if (hooks.petAct) { try { hooks.petAct("think"); } catch (e) {} }
+    const r = await execCmd(cmd, { cwd, timeout: timeoutSec * 1000 });
+    if (hooks.petAct) { try { hooks.petAct(r.ok ? "done" : "think"); } catch (e) {} }
+    log("run_cmd", cmd.slice(0, 100), "->", r.exitCode, r.ms + "ms", cwd);
+    return Object.assign({}, r, {
+      note: r.ok ? "跑通了（退出码 0）"
+        : (r.timedOut ? "超时了（" + timeoutSec + " 秒还没结束），可能卡在等输入或死循环，检查代码或调大 timeout"
+          : "退出码 " + r.exitCode + "，报错看 stderr；改完再跑一次"),
+    });
+  },
+
+  /** 直接跑一小段代码（python / node / powershell）：临时文件 → 执行 → 回 stdout */
+  async run_code(a) {
+    const code = String((a && (a.code || a.source || a.script)) || "");
+    if (!code.trim()) throw new Error('run_code 需要 code，例如 {"lang":"python","code":"print(1+1)"}');
+    if (code.length > 200 * 1024) throw new Error("代码太长（" + code.length + " 字），请 write_file 写进文件再 run_cmd");
+
+    let lang = String((a && (a.lang || a.language || a.type)) || "").toLowerCase().trim();
+    if (!lang) lang = /(^\s*#!.*python|^\s*import\s+\w+|^\s*from\s+\w+\s+import|^\s*def\s+\w+\s*\(|print\()/m.test(code) ? "python" : "node";
+    if (lang === "py" || lang === "python3") lang = "python";
+    if (lang === "js" || lang === "javascript" || lang === "mjs") lang = "node";
+    if (lang === "ps" || lang === "ps1") lang = "powershell";
+    if (!["python", "node", "powershell"].includes(lang)) throw new Error("只支持 python / node / powershell，不认识：" + lang);
+
+    const timeoutSec = Math.max(3, Math.min(300, Number((a && a.timeout) || 60)));
+
+    /* powershell 片段直接当命令跑（危险命令照样拦） */
+    if (lang === "powershell") {
+      dangerCheck(code);
+      const cwdPS = sysPath("home") || HOME;
+      await confirmRun("PowerShell 脚本段（" + code.replace(/\s+/g, " ").slice(0, 80) + "…）", cwdPS);
+      if (hooks.petAct) { try { hooks.petAct("think"); } catch (e) {} }
+      const rps = await execCmd(code, { cwd: cwdPS, timeout: timeoutSec * 1000 });
+      if (hooks.petAct) { try { hooks.petAct(rps.ok ? "done" : "think"); } catch (e) {} }
+      return Object.assign({}, rps, { lang: "powershell", file: null,
+        note: rps.ok ? "跑通了" : "报错了，看 stderr" });
+    }
+
+    const exe = lang === "python" ? await pyExe() : "node";
+    if (!exe) throw new Error("这台电脑上没找到 python（python / py / python3 都不认）。可以让主人装个 Python，或者改用 lang:\"node\" 写");
+
+    fs.mkdirSync(CODE_DIR, { recursive: true });
+    const file = path.join(CODE_DIR, "snippet-" + Date.now() + (lang === "python" ? ".py" : ".js"));
+    fs.writeFileSync(file, code, "utf8");
+    const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+    const psCmd = "Set-Location -LiteralPath " + q(CODE_DIR) + "; & " + q(exe) + " " + q(file);
+
+    if (hooks.petAct) { try { hooks.petAct("think"); } catch (e) {} }
+    const r = await execCmd(psCmd, { cwd: CODE_DIR, timeout: timeoutSec * 1000 });
+    if (hooks.petAct) { try { hooks.petAct(r.ok ? "done" : "think"); } catch (e) {} }
+
+    /* 片段文件只留最近 100 个，别把磁盘塞满 */
+    try {
+      const olds = fs.readdirSync(CODE_DIR).filter((f) => f.startsWith("snippet-")).sort();
+      if (olds.length > 100) olds.slice(0, olds.length - 100).forEach((f) => { try { fs.unlinkSync(path.join(CODE_DIR, f)); } catch (e) {} });
+    } catch (e) { /* ignore */ }
+
+    log("run_code", lang, code.length + "chars", "->", r.exitCode, r.ms + "ms");
+    return Object.assign({}, r, { lang, file,
+      note: r.ok ? "跑通了（退出码 0）" : (r.timedOut ? "超时 " + timeoutSec + " 秒" : "退出码 " + r.exitCode + "，看 stderr 改代码") });
+  },
+
   async move_file(a) {
     const from = checkWritable(a.from || a.path);
     const to = checkWritable(a.to || a.target);
@@ -1489,6 +2239,310 @@ const TOOLS = {
     const t = tasks.find((x) => x.type === "surf");
     if (t) { t.everyMinutes = r.minutes; saveTasks(); armTask(t); }
     return Object.assign({ applied: !!t }, r);
+  },
+
+  /** 让桌宠做动作：主人说"跳个舞/转个圈/吃冰淇淋"这类就用它（动作列表见工具说明） */
+  async pet_act(a) {
+    // 别名表：模型/主人可能给中文名、口语、大小写变体，统一归一到动作名
+    const ALIAS = {
+      "跳舞": "dance", "舞蹈": "dance", "dance": "dance",
+      "转圈": "spin", "转个圈": "spin", "spin": "spin",
+      "唱歌": "sing", "sing": "sing", "唱一首": "sing", "来一首": "sing",
+      "鞠躬": "bow", "bow": "bow",
+      "伸懒腰": "stretch", "懒腰": "stretch", "stretch": "stretch",
+      "哈欠": "yawn", "困": "yawn", "yawn": "yawn",
+      "小提琴": "violin", "violin": "violin",
+      "吹笛": "flute", "笛子": "flute", "笛": "flute", "flute": "flute",
+      "骑马": "horse", "horse": "horse",
+      "水枪": "watergun", "watergun": "watergun", "biu": "watergun",
+      "扇风": "fan", "扇子": "fan", "fan": "fan",
+      "变猫": "cat", "猫咪": "cat", "猫": "cat", "cat": "cat",
+      "雪人": "snowman", "snowman": "snowman",
+      "秋千": "swing_ride", "swing_ride": "swing_ride",
+      "风筝": "kite", "kite": "kite",
+      "摇摆": "sway", "sway": "sway",
+      "泡泡": "bubble", "bubble": "bubble",
+      "东张西望": "look_around", "look_around": "look_around",
+      "干活": "work", "工作": "work", "work": "work",
+      "白饭": "eat_rice", "米饭": "eat_rice", "eat_rice": "eat_rice",
+      "token": "eat_token", "代币": "eat_token", "eat_token": "eat_token",
+      "零食": "eat_snack", "eat_snack": "eat_snack",
+      "冰淇淋": "eat_icecream", "冰激凌": "eat_icecream", "雪糕": "eat_icecream", "icecream": "eat_icecream", "ice_cream": "eat_icecream", "eat_icecream": "eat_icecream",
+      "汤圆": "eat_tangyuan", "eat_tangyuan": "eat_tangyuan",
+      "火锅": "eat_hotpot", "eat_hotpot": "eat_hotpot",
+    };
+    const ALL = ["dance", "spin", "sing", "bow", "stretch", "yawn", "violin", "flute", "horse", "watergun", "fan", "cat", "snowman", "swing_ride", "kite", "sway", "bubble", "look_around", "work",
+      "eat_rice", "eat_token", "eat_snack", "eat_icecream", "eat_tangyuan", "eat_hotpot"];
+    let raw = String((a && (a.act || a.action || a.name)) || "").trim().replace(/^["'`]+|["'`]+$/g, "");
+    if (!raw) throw new Error('act 必填，要写在 JSON 参数里：{"act":"dance"}（跳舞）或 {"act":"eat_icecream"}（吃冰淇淋）');
+    const low = raw.toLowerCase();
+    let act = ALIAS[low] || ALL.find((k) => k === low) || null;
+    if (!act) { const hit = Object.keys(ALIAS).find((k) => low.includes(k)); if (hit) act = ALIAS[hit]; }
+    if (!act && taughtActs.has(low)) act = low;   /* 之前教过的动作直接用 */
+    if (!act && a.clip && hooks.petTeach) {       /* 带 clip 参数 → 现场教一个再表演 */
+      const r = await hooks.petTeach({ act: raw, clip: a.clip, line: a.line, fx: a.fx });
+      if (!r || !r.ok) throw new Error((r && r.msg) || "学新动作失败");
+      act = r.act; taughtActs.add(act);
+    }
+    if (!act) throw new Error('没有「' + raw + '」这个动作。可选：' + [...new Set([...ALL, ...taughtActs])].join(" / ") +
+      '。主人要的动作不在列表里，就调 pet_teach 教鱼一个新动作（挑最接近的 clip 包装一下），教好后再用 pet_act 表演');
+    if (!hooks.petAct) throw new Error("桌宠不在线，动作没送出去");
+    const ok = hooks.petAct(act);
+    if (!ok) throw new Error("不支持的动作 " + act + "：只能用工具说明里列出的动作名");
+    return { ok: true, act, asked: raw, note: "大肥鱼已经在桌面上做这个动作了，可以跟主人说一句" };
+  },
+
+  /** 教桌宠一个新动作：复用现有片段包装（模型自己"编舞"），桌宠会永久记住 */
+  async pet_teach(a) {
+    if (!hooks.petTeach) throw new Error("桌宠不在线，学不了");
+    const r = await hooks.petTeach(a || {});
+    if (!r || !r.ok) throw new Error((r && r.msg) || "学习失败");
+    taughtActs.add(r.act);
+    return { ok: true, act: r.act, total: r.total, note: r.msg + "。以后主人要做这个动作就调 pet_act {\"act\":\"" + r.act + "\"}，现在立刻表演一次给主人看" };
+  },
+
+  /* ================= 鱼的创作室（画图/视频） ================= */
+
+  /** 查看/配置创作室平台。用法：
+   *   art_config {}                                              查看当前配置（key 脱敏）
+   *   art_config {"provider":"通义万相","key":"sk-..."}            存某家 key（中文名/别名自动识别，不用给地址）
+   *   art_config {"provider":"myapi","key":"...","baseUrl":"https://x/v1","model":"sd3"}   新建任意自定义平台
+   *   art_config {"imageProvider":"tongyi","videoProvider":"zhipu"}  切默认通道
+   *   art_config {"delProvider":"myapi"}                          删除自定义平台
+   */
+  async art_config(a) {
+    const cfg = artConfig();
+    const ks = artKeys(cfg);
+    const baseUrl = a && (a.baseUrl || a.imgBase || a.imageBase);
+    const model = a && (a.model || a.imageModel);
+    const label = a && (a.label || a.name);
+    const proto = a && (a.proto || a.protocol);
+    const videoBaseUrl = a && (a.videoBaseUrl || a.vidBase);
+    const videoModel = a && (a.videoModel);
+    let note = "", saved = null;
+
+    if (a && a.provider !== undefined && String(a.provider).trim()) {
+      const name = String(a.provider).trim();
+      let id = resolveArtProvider(name, cfg);
+      if (!id) {
+        if (!baseUrl) {
+          throw new Error("认不出平台「" + name + "」。能直接认出来的：" + knownArtNames(cfg) +
+            "。要接别的接口就把地址和模型一起给我：art_config {\"provider\":\"myapi\",\"key\":\"sk-xxx\",\"baseUrl\":\"https://xxx/v1\",\"model\":\"模型名\"}");
+        }
+        id = artSlug(name);
+        cfg.providers = cfg.providers || {};
+        cfg.providers[id] = { label: label || name, baseUrl: baseUrl, model: model || null, proto: proto || "openai", videoBaseUrl: videoBaseUrl || null, videoModel: videoModel || null, videoProto: videoBaseUrl ? "dashscope" : null };
+        note = "已新建自定义平台「" + (label || name) + "」(" + id + ")";
+      } else if (baseUrl || model || proto || videoBaseUrl || videoModel) {
+        cfg.providers = cfg.providers || {};
+        const cur = cfg.providers[id] || {};
+        cfg.providers[id] = Object.assign({ label: (ART_PRESETS[id] && ART_PRESETS[id].label) || cur.label || id, custom: !ART_PRESETS[id] }, cur,
+          { baseUrl: baseUrl || cur.baseUrl, model: model || cur.model, proto: proto || cur.proto,
+            videoBaseUrl: videoBaseUrl || cur.videoBaseUrl, videoModel: videoModel || cur.videoModel });
+        note = "已更新「" + id + "」的接口地址";
+      }
+      if (a.key !== undefined) {
+        const k = String(a.key || "").trim();
+        const pl = (artProvider(id, cfg) || {}).label || id;
+        if (k) { ks[id] = k; note = (note ? note + "；" : "") + "「" + pl + "」的 key 已保存（" + maskKey(k) + "）"; }
+        else { delete ks[id]; note = (note ? note + "；" : "") + "已删除「" + pl + "」的 key"; }
+      }
+      saved = id;
+      saveArtConfig();
+    }
+    if (a && a.delProvider) {
+      const id = resolveArtProvider(a.delProvider, cfg) || artSlug(a.delProvider);
+      delete (cfg.providers || {})[id];
+      delete ks[id];
+      saveArtConfig();
+      note = (note ? note + "；" : "") + "已移除平台「" + id + "」";
+    }
+    if (a && a.imageProvider !== undefined) { cfg.imageProvider = String(a.imageProvider || "auto"); saveArtConfig(); }
+    if (a && a.videoProvider !== undefined) { cfg.videoProvider = String(a.videoProvider || "zhipu"); saveArtConfig(); }
+    /* 兼容旧参数：imageApi/videoApi 直接落到自定义平台 */
+    if (a && a.imageApi !== undefined && a.imageApi && a.imageApi.baseUrl) {
+      cfg.providers = cfg.providers || {};
+      cfg.providers.custom = Object.assign({ label: "自定义接口", proto: "openai" }, cfg.providers.custom || {},
+        { baseUrl: a.imageApi.baseUrl, model: a.imageApi.model || null });
+      if (a.imageApi.key) ks.custom = String(a.imageApi.key);
+      cfg.imageProvider = "custom"; saveArtConfig(); saved = "custom";
+    }
+
+    const c2 = artConfig();
+    const ks2 = artKeys(c2);
+    const info = {};
+    for (const id of Object.keys(ART_PRESETS)) {
+      const P = artProvider(id, c2);
+      info[id] = {
+        label: P.label, imageModel: P.image || null, videoModel: P.video || null,
+        key: maskKey(ks2[id]), ready: !!ks2[id], apply: P.apply, tip: P.tip,
+        aliases: (ART_PRESETS[id].aliases || []).slice(0, 6),
+      };
+    }
+    for (const id of Object.keys(c2.providers || {})) {
+      if (ART_PRESETS[id]) continue;
+      const P = artProvider(id, c2);
+      info[id] = { label: P.label, imageModel: P.image || null, videoModel: P.video || null, key: maskKey(ks2[id]), ready: !!ks2[id], custom: { baseUrl: P.imgBase || null, proto: P.imgProto, videoBaseUrl: P.vidBase || null }, tip: "自定义平台" };
+    }
+    const ready = configuredArtProviders(c2);
+    log("art_config", "img:" + (c2.imageProvider || "auto"), "vid:" + (c2.videoProvider || "zhipu"), "ready:" + ready.join(","));
+    return {
+      ok: true, saved: saved,
+      imageProvider: c2.imageProvider || "auto", videoProvider: c2.videoProvider || "zhipu",
+      readyProviders: ready,
+      providers: info,
+      note: (note ? note + "。" : "") +
+        (ready.length
+          ? "已配好的平台：" + ready.map((id) => (info[id] && info[id].label) || id).join("、") + "。画图默认按 imageProvider（" + (c2.imageProvider || "auto") + "）走，没配 key 的会自动跳过。"
+          : "还没有任何画图平台的 key。") +
+        "主人报了平台名（通义万相/智谱/硅基流动/即梦…）+ key，就直接调 art_config {\"provider\":\"平台名\",\"key\":\"...\"} 存上，不用问 baseUrl；之后 draw_image {\"prompt\":\"...\",\"provider\":\"平台名\"} 指定用哪家。没 key 的平台把 apply 里的注册链接发给主人。",
+    };
+  },
+
+  /** 画图：按平台路由（OpenAI 兼容 / 通义异步任务 / 任意自定义），全失败时报出每个通道的真实原因 */
+  async draw_image(a) {
+    const prompt = String((a && (a.prompt || a.description)) || "").trim();
+    if (!prompt) throw new Error('draw_image 需要 prompt，例如 {"prompt":"一只蓝鲸在星空下游泳"}');
+    const w = Math.max(256, Math.min(2048, Math.round(Number(a.width) || 1024)));
+    const h = Math.max(256, Math.min(2048, Math.round(Number(a.height) || 1024)));
+    const cfg = artConfig();
+    const ks = artKeys(cfg);
+    const asked = a && a.provider ? String(a.provider) : "";
+    const explicit = asked ? resolveArtProvider(asked, cfg) : null;
+    if (asked && !explicit) {
+      throw new Error("认不出画图平台「" + asked + "」。能直接认出来的：" + knownArtNames(cfg) +
+        "。要接别的接口先用 art_config 配上（\"" + asked + "\" + baseUrl + model + key）");
+    }
+    const order = [];
+    const push = (id) => { if (id && !order.includes(id)) order.push(id); };
+    if (explicit) push(explicit);
+    else {
+      const def = cfg.imageProvider && cfg.imageProvider !== "auto" ? resolveArtProvider(cfg.imageProvider, cfg) : null;
+      push(def);
+      for (const id of configuredArtProviders(cfg)) push(id);
+    }
+    if (!order.length) {
+      throw new Error("还没有可用的画图平台。这几家注册就能免费用：" + knownArtNames(cfg) +
+        "。让主人挑一家注册，然后把 key 给鱼（art_config {\"provider\":\"通义万相\",\"key\":\"sk-...\"}）就能画了");
+    }
+    const errs = [];
+    let provider = null, buf = null;
+    for (const id of order) {
+      const P = artProvider(id, cfg);
+      if (!P) { errs.push(id + "：平台不存在"); continue; }
+      const key = ks[id];
+      if (!key) { errs.push(P.label + "：还没配 key" + (P.apply ? "（注册：" + P.apply + "）" : "")); continue; }
+      if (!P.imgBase || !P.image) { errs.push(P.label + "：没配接口地址或模型名"); continue; }
+      try {
+        buf = P.imgProto === "dashscope"
+          ? await artImgViaDashScope(P, key, prompt, w, h)
+          : await artImgViaCompat(P, key, prompt, w, h);
+        if (buf && buf.length >= 500) { provider = P.label + ":" + P.image; break; }
+        buf = null;
+        errs.push(P.label + "：拿到的图片数据无效");
+      } catch (e) { errs.push(P.label + "：" + e.message); log("draw_image", id, "失败:", e.message); }
+    }
+    if (!buf) {
+      if (explicit) throw new Error("用「" + ((artProvider(explicit, cfg) || {}).label || explicit) + "」画图失败：" + errs.join("；") +
+        "。也可以不指定平台，让鱼用别的已配通道重试");
+      throw new Error("画图失败，各通道原因：" + errs.join("；"));
+    }
+    fs.mkdirSync(ART_DIR, { recursive: true });
+    const f = path.join(ART_DIR, "img-" + Date.now() + "-" + Math.floor(Math.random() * 9000 + 1000) + ".png");
+    fs.writeFileSync(f, buf);
+    const { nativeImage } = require("electron");
+    let img = nativeImage.createFromBuffer(buf);
+    const sz = img.getSize();
+    let dataUrl = "";
+    try {
+      if (Math.max(sz.width, sz.height) > 720) img = img.resize({ width: Math.round(sz.width * 720 / Math.max(sz.width, sz.height)) });
+      let jpg = img.toJPEG(72);
+      if (jpg.length > 200000) { const s2 = img.getSize(); img = img.resize({ width: Math.round(s2.width * 0.7) }); jpg = img.toJPEG(60); }
+      if (jpg.length <= 300000) dataUrl = "data:image/jpeg;base64," + jpg.toString("base64");
+    } catch (e) { /* 预览失败不影响出图 */ }
+    if (hooks.petAct) { try { hooks.petAct("done"); } catch (e) {} }
+    log("draw_image", provider, buf.length + "B", sz.width + "x" + sz.height, "->", f);
+    return { ok: true, provider, path: f, size: buf.length, width: sz.width, height: sz.height, dataUrl,
+      note: "画好了！图片已存到作品集。可以对主人描述画了什么，并告诉主人可以让我打开看、设为壁纸，或多画几张做成视频" };
+  },
+
+  /** 保存一张 base64 图片到作品集 upload 目录（聊天窗粘贴/拖入的图片落盘用） */
+  async save_image(a) {
+    const m = String((a && a.b64) || "").replace(/^data:image\/\w+;base64,/, "").trim();
+    if (!m) throw new Error("save_image 需要 b64（图片的 base64 数据）");
+    let buf = null;
+    try { buf = Buffer.from(m, "base64"); } catch (e) {}
+    if (!buf || buf.length < 50) throw new Error("b64 不是有效的图片数据");
+    const ext = m.startsWith("/9j/") ? ".jpg" : ".png";
+    const dir = path.join(ART_DIR, "upload");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, (a && a.name ? String(a.name).replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) : "paste-" + Date.now()) + ext);
+    fs.writeFileSync(f, buf);
+    log("save_image", f, buf.length + "B");
+    return { ok: true, path: f, size: buf.length };
+  },
+
+  /** 作品集：列出鱼的画/视频 */
+  async list_art() {
+    let items = [];
+    try {
+      items = fs.readdirSync(ART_DIR).filter((f) => /\.(png|jpe?g|webm|mp4)$/i.test(f))
+        .map((f) => { const st = fs.statSync(path.join(ART_DIR, f)); return { name: f, type: /\.(webm|mp4)$/i.test(f) ? "video" : "image", sizeKB: Math.round(st.size / 1024), time: st.mtimeMs, path: path.join(ART_DIR, f) }; })
+        .sort((x, y) => y.time - x.time).slice(0, 20);
+    } catch (e) { /* 目录还没建 */ }
+    return { dir: ART_DIR, count: items.length, items,
+      note: items.length ? "作品集最新在上面，要给主人看哪张就 open_path 它" : "作品集还是空的，画一张就有了" };
+  },
+
+  /** 真·文生视频（智谱 cogvideox-flash，免费）：一句话直接生成 5 秒视频 */
+  async make_video(a) {
+    const prompt = String((a && (a.prompt || a.description)) || "").trim();
+    if (!prompt) throw new Error('make_video 是真 AI 文生视频：需要 prompt，例如 {"prompt":"一条蓝色小鲸鱼游过星空下的城市上空"}。想要 10 秒加 {"duration":"10"}。把已有图片变成会动请改用 animate_image。默认智谱（免费），要指定平台加 {"provider":"通义万相"}');
+    const cfg = artConfig();
+    const dur = String((a && a.duration) || "5");
+    const r = await artVideoRun(cfg, "text", {
+      provider: a && a.provider, prompt: prompt, duration: dur,
+      size: a && a.size, quality: a && a.quality, with_audio: a && a.with_audio, tag: "make_video",
+    });
+    return { ok: true, path: r.path, size: r.size, videoUrl: r.videoUrl, taskId: r.taskId, duration: Number(dur) || 5,
+      provider: r.model || ((a && a.provider) || cfg.videoProvider || "zhipu"),
+      note: "视频生成好了！可以 open_path 播给主人看" };
+  },
+
+  /** 图生视频（默认智谱免费；通义万相需开通 i2v 模型）：一张画变 5 秒动态视频 */
+  async animate_image(a) {
+    const p = resolveUserPath(String((a && a.image) || ""));
+    if (!fs.existsSync(p)) throw new Error("图不存在：" + (a && a.image) + "。先用 draw_image 画一张，或用 list_dir 找主人的图片");
+    const buf = fs.readFileSync(p);
+    if (buf.length > 8 * 1024 * 1024) throw new Error("图太大（" + Math.round(buf.length / 1048576) + "MB），接口上限约 8MB");
+    const mime = /\.png$/i.test(p) ? "image/png" : "image/jpeg";
+    const r = await artVideoRun(artConfig(), "image", {
+      provider: a && a.provider,
+      prompt: String((a && a.prompt) || "画面自然流动，镜头缓缓推进"),
+      duration: String((a && a.duration) || "5"),
+      size: a && a.size, imageBuf: buf, mime: mime, tag: "animate_image",
+    });
+    log("animate_image", r.size + "B ->", r.path);
+    return { ok: true, path: r.path, size: r.size, videoUrl: r.videoUrl, taskId: r.taskId, provider: r.model || null,
+      note: "视频生成好了！可以 open_path 播给主人看，或者把视频路径发给主人" };
+  },
+
+  /** 把鱼画的图设为桌面壁纸（Windows） */
+  async set_wallpaper(a) {
+    const p = resolveUserPath(String((a && a.path) || ""));
+    if (!fs.existsSync(p)) throw new Error("图片不存在：" + (a && a.path));
+    if (!/\.(png|jpe?g|bmp)$/i.test(p)) throw new Error("壁纸得是图片文件（png/jpg/bmp）");
+    const cmd = "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class WP{[DllImport(\"user32.dll\",CharSet=CharSet.Unicode)]public static extern bool SystemParametersInfo(int u,int s,string f,int i);}';[WP]::SystemParametersInfo(20,0,'" + p.replace(/'/g, "''") + "',3)";
+    await new Promise((resolve, reject) => {
+      execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd],
+        { windowsHide: true, timeout: 20000 }, (e, so, se) => {
+          if (e) { log("set_wallpaper 失败:", e.message, String(se || "").slice(0, 200)); reject(new Error("设壁纸失败（可能被安全软件拦了），主人可以在图片上右键手动设")); }
+          else resolve();
+        });
+    });
+    log("set_wallpaper", p);
+    if (hooks.petAct) { try { hooks.petAct("pat_happy"); } catch (e) {} }
+    return { ok: true, path: p, note: "壁纸设好啦！桌面现在是鱼画的这张" };
   },
 
   /* ---------- 定时任务 ---------- */
@@ -1673,6 +2727,7 @@ function register(ipcMain, logger, hookObj) {
 
   ipcMain.handle("dafeiyu-pc-status", () => ({
     enabled: state.enabled,
+    confirmCmd: state.confirmCmd !== false,
     mouseReady: !!nut,
     nutError: nutErr,
     home: HOME,
@@ -1697,6 +2752,13 @@ function register(ipcMain, logger, hookObj) {
       });
     } catch (e) { /* ignore */ }
     return { enabled: state.enabled };
+  });
+
+  ipcMain.handle("dafeiyu-pc-cmd-confirm", (_e, v) => {
+    state.confirmCmd = !!v;
+    savePerm();
+    log("cmd confirm ->", state.confirmCmd);
+    return { confirmCmd: state.confirmCmd };
   });
 
   ipcMain.handle("dafeiyu-pc", async (_e, name, args) => {

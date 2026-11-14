@@ -80,13 +80,22 @@
   #menu div.item:hover, #submenu div.item:hover { background: #eaf6ff; }
   #menu .sep, #submenu .sep { height: 1px; background: #e4eef6; margin: 4px 8px; }
   .has-sub::after { content: "▸"; float: right; color: #9db9cc; margin-left: 10px; }
-  /* 改名字对话框 */
-  #rename-box, #about-box {
+  /* 大脑清单行（WorkBuddy 风格：名称 + 权益标签 + 右侧倍率） */
+  #submenu div.item.mrow { display: flex; align-items: center; gap: 6px; padding: 6px 10px; }
+  #submenu .mtick { width: 13px; flex: none; color: #3e97d6; font-size: 12px; }
+  #submenu .mname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #submenu .mtag { flex: none; font-size: 10px; line-height: 1.5; padding: 0 5px; border-radius: 7px; white-space: nowrap; }
+  #submenu .mtag-free { color: #1d9e6e; background: #e2f7ee; }
+  #submenu .mmeta { flex: none; font-size: 11px; color: #8fb0c7; white-space: nowrap; }
+  #submenu .mhead { font-size: 10.5px; color: #9db9cc; padding: 3px 10px 1px; cursor: default; }
+  #submenu .mhead:hover { background: none; }
+  /* 改名字 / 自定义模型 对话框 */
+  #rename-box, #about-box, #custom-box {
     position: fixed; display: none; z-index: 100;
     background: #fff; border: 1px solid #cfe5f3; border-radius: 14px;
     box-shadow: 0 8px 26px rgba(60,120,170,.35); padding: 14px; width: 220px;
   }
-  #rename-box h3, #about-box h3 { font-size: 14px; color: #1f6fa8; margin-bottom: 10px; }
+  #rename-box h3, #about-box h3, #custom-box h3 { font-size: 14px; color: #1f6fa8; margin-bottom: 10px; }
   /* 关于 / 版权 */
   #about-box { width: 236px; }
   #about-box .line { font-size: 11.5px; color: #4a7899; line-height: 1.75; }
@@ -103,8 +112,16 @@
     padding: 7px 10px; font-size: 13px; outline: none; color: #2a5578;
   }
   #rename-input:focus { border-color: #7fc0ea; }
-  #rename-box .row { display: flex; gap: 8px; margin-top: 10px; }
-  #rename-box button {
+  #custom-box .lb { font-size: 10.5px; color: #8fb0c7; margin: 7px 0 3px; }
+  #custom-box .lb:first-of-type { margin-top: 0; }
+  #custom-box input {
+    width: 100%; border: 1.5px solid #cfe5f3; border-radius: 9px;
+    padding: 6px 9px; font-size: 12px; outline: none; color: #2a5578;
+  }
+  #custom-box input:focus { border-color: #7fc0ea; }
+  #custom-box .err { font-size: 10.5px; color: #d9534f; margin-top: 6px; min-height: 14px; line-height: 1.4; }
+  #rename-box .row, #custom-box .row { display: flex; gap: 8px; margin-top: 10px; }
+  #rename-box button, #custom-box button {
     flex: 1; border: none; border-radius: 9px; padding: 7px 0;
     font-size: 13px; cursor: pointer;
   }
@@ -129,6 +146,7 @@
   <div class="sep"></div>
   <div class="item" data-act="feed">🍚 喂食</div>
   <div class="item" data-act="surf">🐟 让鱼去冲浪</div>
+  <div class="item" data-act="art">🎨 画室作品集</div>
   <div class="item" data-act="throw">🦘 蹦跶一下</div>
   <div class="item" data-act="perch">🧲 贴边趴一会</div>
   <div class="item" data-act="sleep" id="mi-sleep">😴 睡一觉</div>
@@ -145,6 +163,23 @@
   <div class="row">
     <button id="btn-ok">确定</button>
     <button id="btn-cancel">取消</button>
+  </div>
+</div>
+
+<div id="custom-box">
+  <h3>🧠 配置自定义模型</h3>
+  <div class="lb">名称（随便起，可留空）</div>
+  <input id="cu-name" maxlength="20" placeholder="例如：我的 GLM">
+  <div class="lb">接口地址（OpenAI 兼容，一般以 /v1 结尾）</div>
+  <input id="cu-url" placeholder="https://api.openai.com/v1">
+  <div class="lb">API Key（本地接口可留空）</div>
+  <input id="cu-key" type="password" placeholder="sk-...">
+  <div class="lb">模型 ID</div>
+  <input id="cu-model" placeholder="例如：glm-5.3 / deepseek-chat">
+  <div class="err" id="cu-err"></div>
+  <div class="row">
+    <button id="cu-ok">保存并使用</button>
+    <button id="cu-cancel">取消</button>
   </div>
 </div>
 
@@ -314,6 +349,9 @@ const prefs = {
   perch: localStorage.getItem("dfy_perch") !== "off",   /* 闲置贴边休息 */
   pomo: localStorage.getItem("dfy_pomo") !== "off",     /* 番茄钟（自动） */
   hover: localStorage.getItem("dfy_hover") === "on",    /* 悬浮模式：拖哪儿停哪儿 */
+  workmate: localStorage.getItem("dfy_work") !== "off", /* 陪工模式：主人干活鱼陪着 */
+  water: localStorage.getItem("dfy_water") !== "off",   /* 喝水提醒 */
+  cpu: localStorage.getItem("dfy_cpu") !== "off",       /* CPU 状态反应 */
 };
 function savePrefs() {
   localStorage.setItem("dfy_name", prefs.name);
@@ -324,6 +362,9 @@ function savePrefs() {
   localStorage.setItem("dfy_perch", prefs.perch ? "on" : "off");
   localStorage.setItem("dfy_pomo", prefs.pomo ? "on" : "off");
   localStorage.setItem("dfy_hover", prefs.hover ? "on" : "off");
+  localStorage.setItem("dfy_work", prefs.workmate ? "on" : "off");
+  localStorage.setItem("dfy_water", prefs.water ? "on" : "off");
+  localStorage.setItem("dfy_cpu", prefs.cpu ? "on" : "off");
 }
 
 const MURMURS = ["吃什么……吃什么……", "白饭好吃，白饭好吃……", "今天也在认真摸鱼",
@@ -343,6 +384,10 @@ const FEED_LINES = ["哇！谢谢主人！", "开吃开吃……好幸福", "唔
 const WAKE_LINES = ["唔……被叫醒了", "再睡五分钟嘛……", "醒了醒了！有什么吩咐？"];
 /* 心情冷漠时的话（心情系统：<18 分进入「冷漠」） */
 const COLD_LINES = ["哼，鱼才不想理你", "……（冷漠地游过）", "有事吗？没事别烦鱼", "好久都没人理鱼了，哼", "主人的白饭呢？没有。哼。"];
+/* 陪工 / CPU / 生气台词 */
+const WORKMATE_CHEERS = ["加油加油，鱼陪你一起敲~", "敲键盘的声音真好听，鱼来打个下手", "主人好认真，鱼也装模作样地工作", "一起干活！干完吃白饭！", "鱼帮你把 bug 都瞪出来了"];
+const CPU_LINES = ["哇，CPU 好烫！主人在炼什么丹？", "风扇都尖叫了，鱼帮主人扇扇风~", "主机要起飞了，鱼先撤为敬", "CPU 冒烟啦！主人悠着点"];
+const ANGRY_LINES = ["再戳就要生气啦！🐟💢", "戳戳戳，鱼又不是按钮！", "哼！再戳鱼要翻脸了", "啊啊啊别戳了，鱼头都晕了"];
 /* 番茄钟：人离开电脑 5 分钟以上 = 摸鱼/走开，冒泡吐槽 */
 const SLACK_LINES = ["咕噜咕噜……主人是不是在摸鱼呀？", "（冒泡）主人去哪儿了呀……", "别以为鱼看不见哦，人都不在座位上~",
   "摸鱼可以，别被老板抓到哦", "鱼在认真监工呢，主人快回来干活~"];
@@ -711,16 +756,51 @@ let pomoActive = 0;                        /* 累计活跃秒数 */
 let pomoReminded = false;                  /* 本轮 25 分钟是否已经提醒过 */
 let lastSlackTease = 0;                    /* 上次吐槽时间，最少隔 10 分钟一次 */
 let pomoBusy = false;                      /* 防止 async 重入 */
+/* ===== 陪工模式（社区 BongoCat 灵感）=====
+   检测到主人持续活跃（打字/动鼠标）满 8 分钟 → 鱼也开工（work 循环）陪着，
+   期间偶尔冒一句加油台词；主人离开 ≥2 分钟 → 收工回 idle。可开关。 */
+const WORKMATE_START = 8 * 60;
+let workmateOn = false;                    /* 鱼正处于陪工状态 */
+let workmateActive = 0;                    /* 累计活跃秒数（陪工独立计数） */
+let lastCheer = -1e6;                      /* 上次加油台词时间 */
+function companionTick(idle) {
+  if (!prefs.workmate) {
+    if (workmateOn) { workmateOn = false; if (S.state === "work") setState("idle"); }
+    return;
+  }
+  if (S.dragging || S.perch) return;
+  if (idle < 60) {
+    workmateActive += 60;
+    if (!workmateOn && workmateActive >= WORKMATE_START && S.state === "idle") {
+      workmateOn = true; lastCheer = perfNow();
+      setState("work");
+      say(pick(WORKMATE_CHEERS), 4200);
+      S.nextDecide = perfNow() + 240;      /* 随机行为别打断陪工 */
+    } else if (workmateOn && perfNow() - lastCheer > 300) {
+      lastCheer = perfNow();
+      say(pick(WORKMATE_CHEERS), 3600);
+      S.nextDecide = perfNow() + 240;
+    }
+  } else {
+    if (idle >= 120) workmateActive = 0;   /* 离开过就算歇过了 */
+    if (workmateOn && idle >= 120) {
+      workmateOn = false;
+      if (S.state === "work") setState("idle");
+      say("主人走开啦，鱼也歇一会儿~", 3200);
+    }
+  }
+}
 let sysIdleForTest = null;                 /* 测试钩子：非 null 时代替真实系统空闲秒数 */
 async function pomoTick() {
   if (pomoBusy) return;
   pomoBusy = true;
   try {
-    if (!prefs.pomo || S.dragging) return;
     let idle = sysIdleForTest !== null ? sysIdleForTest : 0;
     if (sysIdleForTest === null) {
       try { idle = Number(await window.dafeiyu.sysIdle()) || 0; } catch (e) { return; }
     }
+    companionTick(idle);                   /* 陪工模式：不管番茄钟开没开都要跑 */
+    if (!prefs.pomo || S.dragging) return;
     if (idle < 60) {
       pomoActive += 60;
       if (pomoActive >= POMO_WORK && !pomoReminded && S.state !== "sleep" && !S.perch) {
@@ -778,6 +858,114 @@ async function morningWeather(force) {
 }
 setTimeout(() => morningWeather(false), 26000);   /* 避开开机问候，26 秒后再说 */
 setInterval(() => morningWeather(false), 20 * 60 * 1000);
+
+/* ===== CPU 状态鱼（社区 RunCat 灵感）=====
+   主进程每 10 秒采样推送 CPU 占用率；连续两次 ≥85% 时鱼惊醒/扇风吐槽（可在菜单关）。 */
+let cpuPct = -1, cpuHot = 0, lastCpuPanic = -1e6, cpuForTest = null;   /* cpuForTest：测试钩子 */
+function cpuPush(rawPct) {
+  const pct = cpuForTest !== null ? cpuForTest : Number(rawPct) || 0;
+  cpuPct = pct;
+  refreshMenu();
+  if (!prefs.cpu || S.dragging || S.perch) return;
+  if (pct >= 85) {
+    cpuHot++;
+    if (cpuHot >= 2 && perfNow() - lastCpuPanic > 300 && S.state === "idle") {
+      lastCpuPanic = perfNow(); cpuHot = 0;
+      playOnce(pct >= 92 ? "startle" : "fan");
+      say(pick(CPU_LINES), 4600);
+      fx(["🔥", "💦"], 4);
+    }
+  } else cpuHot = 0;
+}
+window.dafeiyu.onCpu(cpuPush);
+
+/* ===== 喝水提醒（社区 dsh-fat-fish 灵感）=====
+   每 45 分钟催一次喝水；摸头（双击）确认后记入每日计数，右键菜单能看今天喝了几杯。 */
+const WATER_INTERVAL = 45 * 60 * 1000;
+let lastWaterAt = Date.now();
+let pendingWater = false;                  /* 刚提醒过，等主人摸头确认 */
+let waterForTest = null;                   /* 测试钩子：非 null 时直接触发提醒 */
+function waterStats() {
+  try {
+    const o = JSON.parse(localStorage.getItem("dfy_water_n") || "{}");
+    return o.date === new Date().toDateString() ? (o.n || 0) : 0;
+  } catch (e) { return 0; }
+}
+function waterAdd() {
+  const today = new Date().toDateString();
+  let o;
+  try { o = JSON.parse(localStorage.getItem("dfy_water_n") || "{}"); } catch (e) { o = {}; }
+  if (o.date !== today) o = { date: today, n: 0 };
+  o.n = (o.n || 0) + 1;
+  localStorage.setItem("dfy_water_n", JSON.stringify(o));
+  refreshMenu();
+}
+function waterCheck() {
+  if (waterForTest !== null) { waterForTest = null; }
+  else if (!prefs.water || S.dragging || Date.now() - lastWaterAt < WATER_INTERVAL) return;
+  lastWaterAt = Date.now();
+  pendingWater = true;
+  playOnce("bubble");
+  say("💧 该喝水啦！双击摸摸鱼头，鱼帮你记一杯~", 7000);
+  fx(["💧", "✨"], 3);
+}
+setInterval(waterCheck, 60000);
+
+/* ===== 时段问候 + 节日彩蛋（Shimeji 系桌宠标配）=====
+   早安 / 午饭 / 深夜催睡 / 周五快乐，每条每天最多一次；元旦、春节、中秋等节日有专属台词。 */
+const GREET_KEY = "dfy_greet";
+const LUNAR_FEST = {                       /* 农历节日速查（2026-2027） */
+  "2026-02-16": "除夕", "2026-02-17": "春节", "2026-03-03": "元宵节", "2026-09-25": "中秋节",
+  "2027-02-05": "除夕", "2027-02-06": "春节", "2027-02-20": "元宵节", "2027-09-15": "中秋节",
+};
+const SOLAR_FEST = { "01-01": "元旦", "02-14": "情人节", "05-01": "劳动节", "06-01": "儿童节", "10-01": "国庆节", "12-25": "圣诞节" };
+const FEST_LINES = {
+  "春节": "新年快乐！🧧 大肥鱼给主人拜年啦，年年有鱼！",
+  "除夕": "今晚除夕！年夜饭有鱼才圆满——说的就是鱼本鱼！",
+  "元宵节": "元宵节快乐！鱼也想吃汤圆了……菜单里给鱼来一份呗？",
+  "中秋节": "中秋团圆！鱼饼……不对，月饼节快乐！",
+  "元旦": "元旦快乐！新的一年也请多多投喂大肥鱼哦~",
+  "情人节": "情人节……鱼和主人也算是双向奔赴了吧？",
+  "劳动节": "劳动节快乐！主人放假，鱼放假，白饭照吃不误！",
+  "儿童节": "儿童节快乐！鱼永远是三岁半的小肥鱼！",
+  "国庆节": "国庆快乐！祝祖国妈妈生日快乐，也祝主人假期玩得开心！",
+  "圣诞节": "圣诞快乐🎄！圣诞袜里想装满白饭……",
+};
+function festivalToday() {
+  const d = new Date();
+  const md = String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  return LUNAR_FEST[d.getFullYear() + "-" + md] || SOLAR_FEST[md] || null;
+}
+function loadGreet() {
+  try {
+    const o = JSON.parse(localStorage.getItem(GREET_KEY) || "{}");
+    return o.date === new Date().toDateString() ? o : { date: new Date().toDateString(), ids: [] };
+  } catch (e) { return { date: new Date().toDateString(), ids: [] }; }
+}
+function greetTick(testHour) {
+  if (S.dragging || S.perch || S.state === "sleep") return;
+  const g = loadGreet();
+  const d = new Date();
+  const h = testHour !== undefined ? testHour : d.getHours();
+  const trySay = (id, text) => {
+    if (g.ids.includes(id)) return false;
+    g.ids.push(id);
+    localStorage.setItem(GREET_KEY, JSON.stringify(g));
+    say(text, 8000);
+    return true;
+  };
+  const fest = festivalToday();
+  if (fest && h >= 7 && h < 22 && trySay("fest:" + fest, "🎉 " + FEST_LINES[fest])) return;
+  if (h >= 6 && h < 9 && localStorage.getItem(WKEY) !== d.toDateString()) {
+    /* 天气播报没抢到早安的话，鱼补一句 */
+    if (trySay("morning", "早上好主人！新的一天，也请多多投喂鱼哦~")) return;
+  }
+  if (h >= 11 && h < 13) { if (trySay("lunch", "中午啦！主人吃饭了吗？按时吃饭，鱼也要吃白饭~")) return; }
+  if (h >= 22 && trySay("night", "不早了哦，主人早点休息，鱼先睡为敬 Zzz……")) return;
+  if (d.getDay() === 5 && h >= 15) trySay("friday", "周五啦！！熬过今天就是周末，鱼陪主人一起冲！");
+}
+setTimeout(greetTick, 40000);              /* 开机 40 秒后先问一次 */
+setInterval(greetTick, 5 * 60 * 1000);
 
 /* 每帧推进：vanish（原地淡出）→ rest（在边框上趴着）→ leave（淡出，然后归位） */
 function updatePerch(now) {
@@ -847,9 +1035,25 @@ window.dafeiyu.onExternalState((p) => {
 });
 
 /* 拖拽抛掷 */
+let tapTimes = [];                         /* 连点检测：1.6 秒内点满 3 次鱼会生气 */
+let lastAngry = -1e6;
 pet.addEventListener("pointerdown", (e) => {
   lastMouse.cx = e.clientX; lastMouse.cy = e.clientY; lastMouse.sx = e.screenX; lastMouse.sy = e.screenY;
   if (!nearFish(e.clientX, e.clientY)) return;   /* 离鱼远：这一下不抓，也不解除贴边 */
+  /* 连点 3 次（1.6 秒内）→ 鱼生气（社区 dsh-pet-dafeiyu 灵感），这一下不进入拖拽 */
+  if (e.button === 0 && !S.dragging) {
+    const nms = Date.now();
+    tapTimes = tapTimes.filter((t) => nms - t < 1600);
+    tapTimes.push(nms);
+    if (tapTimes.length >= 3 && perfNow() - lastAngry > 30) {
+      lastAngry = perfNow(); tapTimes = [];
+      playOnce("error");
+      say(pick(ANGRY_LINES), 4200);
+      fx(["💢"], 4);
+      addMood(-3);
+      return;
+    }
+  }
   const b0 = getWinPos();                  /* 贴边解除会改窗口尺寸/位置，先记下旧的 */
   const wasPerch = !!S.perch;              /* 贴边中被碰到：这一下只负责把它叫醒 */
   markActive();                            /* 有人在碰鱼：闲置计时清零，贴边中就地解除 */
@@ -931,15 +1135,34 @@ pet.addEventListener("pointercancel", () => {
 pet.addEventListener("dblclick", (e) => {
   if (S.dragging || S.state === "fly") return;
   if (!nearFish(e.clientX, e.clientY)) return;   /* 离鱼远的双击不摸 */
+  if (pendingWater) {                      /* 刚催过喝水：摸头 = 记一杯 */
+    pendingWater = false;
+    waterAdd();
+    playOnce(pick(PAT_CLIPS), "咕噜咕噜~今日第 " + waterStats() + " 杯水，记上啦 💧");
+    return;
+  }
   playOnce(pick(PAT_CLIPS), pick(PAT_LINES));
 });
 
 /* ===== 右键菜单与子菜单 ===== */
 let startupOn = false;
 let pcOn = true;
+let cmdConfirmOn = true;   /* 跑命令前是否先弹确认窗（1.1.12） */
 let surfOn = false, surfInfo = null;
+let brainNow = { id: "auto", name: "Auto（自动挑）" };   /* 当前对话大脑（1.1.14） */
+let brainList = [];                                      /* 云端真实模型清单，聊天窗回传 */
 window.dafeiyu.getStartup().then((v) => { startupOn = v; refreshMenu(); }).catch(() => {});
-window.dafeiyu.pcStatus().then((st) => { pcOn = !!st.enabled; refreshMenu(); }).catch(() => {});
+window.dafeiyu.brainGet().then((r) => {
+  if (r && r.brain) brainNow = r.brain;
+  if (r && r.models) brainList = r.models;
+  refreshMenu();
+}).catch(() => {});
+window.dafeiyu.onBrainChanged((p) => {
+  if (p && p.brain) brainNow = p.brain;
+  if (p && p.models) brainList = p.models;
+  refreshMenu();
+});
+window.dafeiyu.pcStatus().then((st) => { pcOn = !!st.enabled; cmdConfirmOn = st.confirmCmd !== false; refreshMenu(); }).catch(() => {});
 window.dafeiyu.onPcChanged((v) => { pcOn = !!v; refreshMenu(); });
 window.dafeiyu.surfState().then((st) => { surfOn = !!st.enabled; surfInfo = st; refreshMenu(); }).catch(() => {});
 /* 定时任务提醒：到点冒气泡 + 行个礼 */
@@ -977,6 +1200,181 @@ function handleSurfEvent(ev) {
 window.dafeiyu.onSurfEvent(handleSurfEvent);
 window.__surfEmit = handleSurfEvent;           /* 验证脚本用（contextBridge 只读，没法 stub IPC） */
 
+/* 聊天指令动作：主人在聊天窗说"跳个舞/吃冰淇淋"，模型调 pet_act 工具，主进程转发到这里 */
+const PET_ACTS = {
+  dance:       { clip: "dance",       line: "音乐响起来，鱼开始跳舞啦～", fx: ["🎵", "💃", "✨"] },
+  spin:        { clip: "spin",        line: "转圈圈～晕了但很开心！", fx: ["✨", "💫"] },
+  sing:        { clip: "sing",        line: "🎵 啦啦啦～鱼在唱歌哦", fx: ["🎵", "🎶"] },
+  bow:         { clip: "bow",         line: "谢谢主人赏脸看表演～", fx: ["✨"] },
+  stretch:     { clip: "stretch",     line: "伸个懒腰，舒坦～", fx: [] },
+  yawn:        { clip: "yawn",        line: "呼啊——有点困了呢", fx: ["💤"] },
+  violin:      { clip: "violin",      line: "🎻 来一首忧伤的小提琴", fx: ["🎻", "🎵"] },
+  flute:       { clip: "flute",       line: "🎶 悠扬的笛声～", fx: ["🎶"] },
+  horse:       { clip: "horse",       line: "驾！骑上小鱼马冲鸭！", fx: ["🐴", "💨"] },
+  watergun:    { clip: "watergun",    line: "biu biu biu！水枪攻击！", fx: ["💦", "🔫"] },
+  fan:         { clip: "fan",         line: "好热好热，扇扇风~", fx: ["💨"] },
+  cat:         { clip: "cat",         line: "喵？鱼变成猫了？", fx: ["🐱"] },
+  snowman:     { clip: "snowman",     line: "堆个雪人陪你玩～", fx: ["⛄", "❄️"] },
+  swing_ride:  { clip: "swing_ride",  line: "荡秋千喽～", fx: ["🌈"] },
+  kite:        { clip: "kite",        line: "放风筝咯，风好舒服~", fx: ["🪁"] },
+  sway:        { clip: "sway",        line: "跟着节奏摇一摇～", fx: ["🎵"] },
+  bubble:      { clip: "bubble",      line: "噗噜噗噜吐泡泡~", fx: ["🫧"] },
+  look_around: { clip: "look_around", line: "东看看西看看，有啥好玩的？", fx: [] },
+  work:        { clip: "work",        line: "开工开工，认真脸！", fx: ["💻"] },
+  eat_rice:     { food: { clip: "eat_rice",     icon: "🍚", name: "白饭" } },
+  eat_token:    { food: { clip: "eat_token",    icon: "🪙", name: "Token" } },
+  eat_snack:    { food: { clip: "eat_snack",    icon: "🍱", name: "零食" } },
+  eat_icecream: { food: { clip: "eat_icecream", icon: "🍦", name: "冰淇淋" } },
+  eat_tangyuan: { food: { clip: "eat_tangyuan", icon: "🍡", name: "汤圆" } },
+  eat_hotpot:   { food: { clip: "eat_hotpot",   icon: "🍲", name: "火锅" } },
+};
+function doPetAct(name) {
+  const a = PET_ACTS[name];
+  if (!a) return false;
+  if (S.perch) exitPerch(true);
+  if (S.state === "sleep") setState("idle");
+  markActive();
+  if (a.food) {
+    if (feedBusy) return true;
+    feedBusy = true;
+    addMood(15);
+    const el = document.createElement("div");
+    el.className = "food-drop";
+    el.textContent = a.food.icon;
+    el.style.left = (fishOffX + PET_W / 2 - 12 + (Math.random() * 50 - 25)) + "px";
+    el.style.setProperty("--fy", (fishOffY + PET_H * 0.45) + "px");
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1150);
+    say("主人请鱼吃" + a.food.name + "！", 2000);
+    setTimeout(() => {
+      playOnce(a.food.clip, "唔嘛唔嘛~真香");
+      fx([a.food.icon, "✨", "💕"], 5);
+    }, 1000);
+    setTimeout(() => {
+      if (!S.dragging && !S.perch) {
+        playOnce("spin", "吃饱啦~开心得转圈圈！");
+        fx(["💕", "🎵", "✨"], 4);
+      }
+      feedBusy = false;
+    }, 4600);
+  } else {
+    playOnce(a.clip, a.line);
+    if (a.fx && a.fx.length) fx(a.fx, 4);
+    addMood(2);
+  }
+  return true;
+}
+/* ---------- 自学动作：模型教的组合技（复用现有片段重新包装，存 localStorage 永久记住） ---------- */
+const TEACH_CLIPS = ["dance","spin","sing","bow","stretch","yawn","violin","flute","horse","watergun","fan","cat","snowman","swing_ride","kite","sway","bubble","look_around","work","work_code","think","startle","pat_happy","pat_wave","eat_rice","eat_token","eat_snack","eat_icecream","eat_tangyuan","eat_hotpot"];
+const ACTS_KEY = "dfy_acts";
+let customActs = {};
+try { customActs = JSON.parse(localStorage.getItem(ACTS_KEY) || "{}") || {}; } catch (e) { customActs = {}; }
+for (const k of Object.keys(customActs)) {          /* 开机把学会的动作挂回动作表 */
+  const a = customActs[k];
+  if (a && TEACH_CLIPS.includes(a.clip)) PET_ACTS[k] = { clip: a.clip, line: a.line || "", fx: a.fx || [], custom: true };
+  else delete customActs[k];
+}
+function learnAct(spec) {
+  spec = spec || {};
+  const act = String(spec.act || spec.name || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32);
+  const clip = String(spec.clip || "").trim();
+  if (!act || !/^[a-z][a-z0-9_]*$/.test(act)) return { ok: false, msg: "动作名要用英文小写（可带数字/下划线），比如 yoga、moonwalk" };
+  if (PET_ACTS[act] && !customActs[act]) return { ok: false, msg: act + " 是内置动作，不用教，直接调 pet_act 就行" };
+  if (!TEACH_CLIPS.includes(clip)) return { ok: false, msg: "没有 " + clip + " 这个片段。可选：" + TEACH_CLIPS.join(" / ") };
+  customActs[act] = { clip, line: String(spec.line || "").slice(0, 60), fx: Array.isArray(spec.fx) ? spec.fx.filter((x) => typeof x === "string" && x.length <= 4).slice(0, 4) : [], learned: Date.now() };
+  PET_ACTS[act] = { clip, line: customActs[act].line, fx: customActs[act].fx, custom: true };
+  try { localStorage.setItem(ACTS_KEY, JSON.stringify(customActs)); } catch (e) {}
+  return { ok: true, act, msg: "学会了「" + act + "」", total: Object.keys(PET_ACTS).length };
+}
+window.__learnAct = learnAct;                    /* 验证脚本用 */
+
+window.dafeiyu.onPetAct((name) => { try { doPetAct(String(name || "")); } catch (e) {} });
+window.dafeiyu.onPetTeach((spec) => {
+  let r;
+  try { r = learnAct(spec); } catch (e) { r = { ok: false, msg: "学习出错 " + e.message }; }
+  window.dafeiyu.teachResult(r);
+});
+window.__petAct = doPetAct;                    /* 验证脚本用 */
+
+/* ---- 创作室：隐藏 canvas + MediaRecorder 录视频（pc.js 的 make_video 落到这里执行，零依赖） ---- */
+async function recordVideo(spec) {
+  try {
+    const frames = (spec && spec.frames) || [];
+    if (!frames.length) return { ok: false, msg: "没有帧" };
+    const W = 1280, H = 720;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext("2d");
+    const imgs = [];
+    for (const f of frames) {
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = () => rej(new Error("图片加载失败 " + f.path));
+        im.src = "file:///" + String(f.path).replace(/\\/g, "/");
+      });
+      imgs.push(img);
+    }
+    const stream = cv.captureStream(30);
+    const mimes = ["video/mp4;codecs=avc1.42E01E", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+    const mime = (window.MediaRecorder && mimes.find((m) => MediaRecorder.isTypeSupported(m))) || "";
+    if (!mime) return { ok: false, msg: "这个环境不支持视频录制" };
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4200000 });
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const stopped = new Promise((res) => { rec.onstop = res; });
+    rec.start(250);
+    const hold = Math.max(800, (frames[0].hold || 2) * 1000);
+    const fade = Math.min(500, hold * 0.3);
+    const total = hold * imgs.length;
+    const t0 = performance.now();
+    await new Promise((res) => {
+      (function draw() {
+        const t = performance.now() - t0;
+        if (t >= total) { res(); return; }
+        const idx = Math.min(imgs.length - 1, Math.floor(t / hold));
+        const local = t - idx * hold;
+        ctx.fillStyle = "#0b1526"; ctx.fillRect(0, 0, W, H);
+        const im = imgs[idx];
+        const sc = Math.max(W / im.naturalWidth, H / im.naturalHeight);
+        const dw = im.naturalWidth * sc, dh = im.naturalHeight * sc;
+        ctx.globalAlpha = local < fade ? local / fade : 1;
+        ctx.drawImage(im, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        ctx.globalAlpha = 1;
+        const text = spec && spec.text;
+        if (text) {
+          const lines = String(text).split("\n").slice(0, 2);
+          ctx.font = "bold 34px 'Microsoft YaHei', sans-serif";
+          ctx.textAlign = "center"; ctx.lineWidth = 6; ctx.strokeStyle = "rgba(0,0,0,.75)";
+          lines.forEach((ln, i) => {
+            const y = H - 46 - (lines.length - 1 - i) * 44;
+            ctx.strokeText(ln, W / 2, y);
+            ctx.fillStyle = "#fff"; ctx.fillText(ln, W / 2, y);
+          });
+        }
+        if (!spec || spec.watermark !== false) {
+          ctx.font = "18px 'Microsoft YaHei', sans-serif"; ctx.textAlign = "left";
+          ctx.fillStyle = "rgba(255,255,255,.55)";
+          ctx.fillText("🎨 大肥鱼工作室", 18, 28);
+        }
+        requestAnimationFrame(draw);
+      })();
+    });
+    rec.stop();
+    await stopped;
+    const blob = new Blob(chunks, { type: mime.split(";")[0] });
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+    const r = await window.dafeiyu.saveVideo(buf, ext);
+    if (!r || !r.ok) return { ok: false, msg: (r && r.msg) || "保存失败" };
+    return { ok: true, path: r.path, size: r.size, format: ext, duration: Math.round(total / 100) / 10 };
+  } catch (e) {
+    return { ok: false, msg: "录制出错：" + e.message };
+  }
+}
+window.dafeiyu.onVideoRecord((spec) => { recordVideo(spec).then((r) => { try { window.dafeiyu.videoResult(r); } catch (e) {} }); });
+window.__recordVideo = recordVideo;            /* 验证脚本用 */
+
 function refreshMenu() {
   const el = (id) => document.getElementById(id);
   const murmurEl = el("mi-murmur");
@@ -989,10 +1387,20 @@ function refreshMenu() {
   if (perchEl) perchEl.textContent = "🧲 闲置贴边休息：" + (prefs.perch ? "开" : "关");
   const pcEl = el("mi-pc");
   if (pcEl) pcEl.textContent = "🖱️ 电脑操作：" + (pcOn ? "开" : "关");
+  const brainEl = el("mi-brain");
+  if (brainEl) brainEl.textContent = "🧠 大脑：" + (brainNow.name || brainNow.id);
+  const ccfEl = el("mi-cmdconfirm");
+  if (ccfEl) ccfEl.textContent = "💻 命令确认：" + (cmdConfirmOn ? "每次问我" : "不问直接跑");
   const sleepEl = el("mi-sleep");
   if (sleepEl) sleepEl.textContent = S.state === "sleep" ? "☀️ 叫醒" : "😴 睡一觉";
   const pomoEl = el("mi-pomo");
   if (pomoEl) pomoEl.textContent = "🍅 番茄钟：" + (prefs.pomo ? "开" : "关");
+  const wmEl = el("mi-workmate");
+  if (wmEl) wmEl.textContent = "⌨️ 陪工模式：" + (prefs.workmate ? "开" : "关");
+  const waEl = el("mi-water");
+  if (waEl) waEl.textContent = "💧 喝水提醒：" + (prefs.water ? "开" : "关") + "（今日 " + waterStats() + " 杯）";
+  const cpuEl = el("mi-cpu");
+  if (cpuEl) cpuEl.textContent = "🖥️ CPU：" + (cpuPct < 0 ? "…" : cpuPct + "%") + (prefs.cpu ? "（反应开）" : "（反应关）");
   const hoverEl = el("mi-hover");
   if (hoverEl) hoverEl.textContent = "🪁 悬浮模式：" + (prefs.hover ? "开" : "关");
   const surfEl = el("mi-surf");
@@ -1033,12 +1441,17 @@ function showSub(name, anchor) {
       ["theme", "mi-theme", "🎨 换个色调"],
       ["murmur", "mi-murmur", "💬 碎碎念"],
       ["pomo", "mi-pomo", "🍅 番茄钟"],
+      ["workmate", "mi-workmate", "⌨️ 陪工模式"],
+      ["water", "mi-water", "💧 喝水提醒"],
+      ["cpu", "mi-cpu", "🖥️ CPU 状态"],
       ["surf_auto", "mi-surf", "🌊 自主冲浪"],
       ["hover", "mi-hover", "🪁 悬浮模式"],
       ["top", "mi-top", "📌 窗口置顶"],
       ["startup", "mi-startup", "🚀 开机自启"],
       ["perch_auto", "mi-perch", "🧲 闲置贴边休息"],
       ["pc", "mi-pc", "🖱️ 电脑操作"],
+      ["cmdconfirm", "mi-cmdconfirm", "💻 命令确认"],
+      ["brain", "mi-brain", "🧠 大脑"],
       ["tasklist", null, "⏰ 定时任务清单"],
       ["rename", null, "✏️ 改名字"],
       ["big", null, "🔍 大一点"],
@@ -1056,6 +1469,71 @@ function showSub(name, anchor) {
     }
     refreshMenu();                           /* 行建好后再刷新，心情/番茄钟等才带状态值 */
     applyTheme();
+  } else if (name === "brain") {
+    /* 大脑清单（WorkBuddy 风格）：快捷档前排 + 全量模型滚动列表 + 免费标签 + 底部自定义入口 */
+    const HEAD = ["auto", "fast-model", "balanced-model", "deep-model"];
+    const head = [], rest = [];
+    for (const m of brainList) (HEAD.indexOf(m.id) >= 0 ? head : rest).push(m);
+    head.sort((a, b) => HEAD.indexOf(a.id) - HEAD.indexOf(b.id));
+    const mkRow = (m) => {
+      const d = document.createElement("div");
+      d.className = "item mrow";
+      d.dataset.brain = m.id;
+      if (m.desc) d.title = m.desc;
+      const tick = document.createElement("span");
+      tick.className = "mtick";
+      tick.textContent = m.id === brainNow.id ? "✓" : "";
+      const nm = document.createElement("span");
+      nm.className = "mname";
+      nm.textContent = m.name;
+      d.appendChild(tick); d.appendChild(nm);
+      const free = m.credits === "x0.00" || m.credits === "免费";
+      if (free) {
+        const t = document.createElement("span");
+        t.className = "mtag mtag-free";
+        t.textContent = "限时免费";
+        d.appendChild(t);
+      }
+      const meta = document.createElement("span");
+      meta.className = "mmeta";
+      meta.textContent = free ? "" : (/^x/.test(m.credits || "") ? m.credits.slice(1) + "x" : (m.credits === "浮动" ? "自动" : m.credits || ""));
+      d.appendChild(meta);
+      return d;
+    };
+    const addHead = (txt) => {
+      const h = document.createElement("div");
+      h.className = "item mhead";
+      h.textContent = txt;
+      submenuEl.appendChild(h);
+    };
+    if (!brainList.length) {
+      const d = document.createElement("div");
+      d.className = "item";
+      d.textContent = "（打开一次聊天窗后这里才有云端模型清单）";
+      d.style.opacity = "0.6";
+      submenuEl.appendChild(d);
+    }
+    if (head.length) { addHead("快捷档"); for (const m of head) submenuEl.appendChild(mkRow(m)); }
+    if (rest.length) { addHead("全部模型"); for (const m of rest) submenuEl.appendChild(mkRow(m)); }
+    /* 自定义模型：配置过就进清单可选中 */
+    const cu = brainNow.custom || null;
+    if (cu && cu.model) {
+      const sep = document.createElement("div");
+      sep.className = "sep";
+      submenuEl.appendChild(sep);
+      submenuEl.appendChild(mkRow({ id: "custom", name: "自定义 · " + cu.model, credits: "自备", desc: cu.baseUrl }));
+    }
+    const cfgRow = document.createElement("div");
+    cfgRow.className = "item";
+    cfgRow.dataset.act = "cusconfig";
+    cfgRow.textContent = "✏️ 配置自定义模型";
+    submenuEl.appendChild(cfgRow);
+    const back = document.createElement("div");
+    back.className = "item";
+    back.dataset.act = "backsettings";
+    back.textContent = "← 返回设置";
+    back.style.opacity = "0.75";
+    submenuEl.appendChild(back);
   }
   submenuEl.style.display = "block";
   const sw2 = submenuEl.offsetWidth, sh2 = submenuEl.offsetHeight;
@@ -1144,6 +1622,10 @@ window.addEventListener("contextmenu", (e) => {
   placeMenu();                             /* 菜单摆在鱼身上方，绝不盖住鱼 */
 });
 window.addEventListener("click", (e) => {
+  /* 子菜单委托处理里 showSub 会重建 innerHTML，被点的旧节点被拆走后
+     contains(e.target) 必为 false——带菜单标记的点击一律不在这关菜单 */
+  if (e._dafMenuClick) return;
+  if (customBox.contains(e.target)) return;   /* 自定义模型弹窗盖在菜单上，点它不收菜单 */
   if (!menuEl.contains(e.target) && !submenuEl.contains(e.target)) closeMenus();
 });
 
@@ -1195,6 +1677,14 @@ function handleAction(act) {
     window.dafeiyu.surfNow();
     say("鱼去冲浪啦，看看有没有好玩的~", 3600);
     fx(["🌊", "✨"], 3);
+  } else if (act === "art") {
+    closeMenus();
+    window.dafeiyu.pc("open_path", { path: "~/.workbuddy/dafeiyu-art" }).then(() => {
+      say("这是鱼的画室~画了新作品都会存这里", 3600);
+      fx(["🎨", "✨"], 3);
+    }).catch(() => {
+      say("画室还没开张呢！跟鱼说「画一张XX」就有了", 4200);
+    });
   } else if (act === "surf_auto") {
     if (!surfOn && !pcOn) { say("自主冲浪要用电脑操作能力，先去设置里把「🖱️ 电脑操作」打开~", 4800); return; }
     window.dafeiyu.surfToggle().then((st) => {
@@ -1229,6 +1719,20 @@ function handleAction(act) {
     say(prefs.pomo
       ? "番茄钟开！鱼会盯着主人，连续干活 25 分钟就催你休息~"
       : "番茄钟关了，主人自己看着点时间哦", 3600);
+  } else if (act === "workmate") {
+    prefs.workmate = !prefs.workmate; savePrefs(); refreshMenu();
+    say(prefs.workmate
+      ? "陪工模式开！主人敲键盘干活，鱼也开工陪着你~"
+      : "陪工模式关了，鱼干看着怪闷的", 3600);
+  } else if (act === "water") {
+    prefs.water = !prefs.water; savePrefs(); refreshMenu();
+    if (prefs.water) { lastWaterAt = Date.now(); say("喝水提醒开！鱼每 45 分钟催主人喝一次水，摸鱼头就能记一杯~", 4600); }
+    else say("喝水提醒关了，主人自己记得多喝水哦", 3400);
+  } else if (act === "cpu") {
+    prefs.cpu = !prefs.cpu; savePrefs(); refreshMenu();
+    say(prefs.cpu
+      ? "CPU 状态反应开！电脑一卡，鱼比谁都先慌~"
+      : "不慌了不慌了，CPU 再高鱼也淡定", 3400);
   } else if (act === "mood") {
     if (mood < 18) say("哼！心情：冷漠（" + Math.round(mood) + "/100）……多陪鱼聊聊天、喂喂饭才好得起来", 6000);
     else say("心情：" + moodName() + "（" + Math.round(mood) + "/100）" + (mood < 40 ? "，有点无聊了，陪鱼玩玩嘛~" : "，鱼今天状态不错！"), 5000);
@@ -1270,6 +1774,14 @@ function handleAction(act) {
         ? "电脑操作开了！鱼可以帮你动鼠标、敲键盘、看屏幕、读文件啦"
         : "电脑操作关掉了，鱼只能乖乖待在桌面上", 3200);
     });
+  } else if (act === "cmdconfirm") {
+    if (!pcOn) { say("先开「🖱️ 电脑操作」，鱼才能跑命令~", 3600); return; }
+    window.dafeiyu.setCmdConfirm(!cmdConfirmOn).then((r) => {
+      cmdConfirmOn = r.confirmCmd !== false; refreshMenu();
+      say(cmdConfirmOn
+        ? "以后跑命令前都会先问你，你点「允许执行」才跑"
+        : "⚠️ 以后跑命令不再问你了，会直接跑。不放心的话随时在这里改回来", 5200);
+    }).catch(() => {});
   } else if (act === "shot") {
     say("鱼去瞄一眼屏幕……", 2200);
     window.dafeiyu.pc("screenshot", {}).then((r) => {
@@ -1356,11 +1868,27 @@ menuEl.addEventListener("click", (e) => {
 submenuEl.addEventListener("click", (e) => {
   const it = e.target.closest(".item");
   if (!it) return;
-  if (it.dataset.anim) { closeMenus(); playOnce(it.dataset.anim); }
+  e._dafMenuClick = true;   /* 本处理器可能重建子菜单，window 关闭器要豁免这次点击 */
+  if (it.dataset.brain) {
+    const id = it.dataset.brain;
+    window.dafeiyu.brainSet(id).then((r) => {
+      if (r && r.ok) brainNow = r.brain;
+      refreshMenu();
+      showSub("settings", menuEl.querySelector('[data-sub="settings"]'));
+      say("🧠 换成 " + (brainNow.name || id) + " 了", 2600);
+    }).catch(() => {});
+  }
+  else if (it.dataset.anim) { closeMenus(); playOnce(it.dataset.anim); }
   else if (it.dataset.act) {
     const act = it.dataset.act;
     if (act === "big" || act === "small") { closeMenus(); handleAction(act); }  /* 缩放要重排窗口，先收菜单 */
-    else if (act === "theme" || act === "murmur" || act === "pc") {
+    else if (act === "brain" || act === "backsettings") {
+      showSub(act === "brain" ? "brain" : "settings", menuEl.querySelector('[data-sub="settings"]'));
+    }
+    else if (act === "cusconfig") {
+      openCustomCfg();                       /* 弹窗盖在菜单上，菜单留着 */
+    }
+    else if (act === "theme" || act === "murmur" || act === "pc" || act === "cmdconfirm") {
       handleAction(act); showSub("settings", menuEl.querySelector('[data-sub="settings"]'));
     } else { closeMenus(); handleAction(act); }
   }
@@ -1384,6 +1912,40 @@ renameInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") document.getElementById("btn-cancel").click();
 });
 
+/* 配置自定义模型（大脑）：保存后立即切到自定义大脑，聊天窗经主进程转发请求 */
+const customBox = document.getElementById("custom-box"),
+      cuName = document.getElementById("cu-name"),
+      cuUrl = document.getElementById("cu-url"),
+      cuKey = document.getElementById("cu-key"),
+      cuModel = document.getElementById("cu-model"),
+      cuErr = document.getElementById("cu-err");
+function openCustomCfg() {
+  const cu = brainNow.custom || null;
+  cuName.value = cu ? (cu.name || "") : "";
+  cuUrl.value = cu ? (cu.baseUrl || "") : "";
+  cuKey.value = cu ? (cu.apiKey || "") : "";
+  cuModel.value = cu ? (cu.model || "") : "";
+  cuErr.textContent = "";
+  customBox.style.display = "block";
+  customBox.style.left = Math.max(8, Math.min(winW - customBox.offsetWidth - 8, (winW - customBox.offsetWidth) / 2)) + "px";
+  customBox.style.top = Math.max(8, Math.min(winH - customBox.offsetHeight - 8, (winH - customBox.offsetHeight) / 2)) + "px";
+  cuUrl.focus();
+}
+document.getElementById("cu-cancel").addEventListener("click", () => { customBox.style.display = "none"; });
+document.getElementById("cu-ok").addEventListener("click", () => {
+  const cfg = { name: cuName.value.trim(), baseUrl: cuUrl.value.trim(), apiKey: cuKey.value.trim(), model: cuModel.value.trim() };
+  if (!/^https?:\/\//i.test(cfg.baseUrl)) { cuErr.textContent = "接口地址要以 http(s):// 开头，OpenAI 兼容接口一般以 /v1 结尾"; return; }
+  if (!cfg.model) { cuErr.textContent = "模型 ID 得填一个，比如 glm-5.3 或 deepseek-chat"; return; }
+  window.dafeiyu.brainCustomSet(cfg).then((r) => {
+    if (!r || !r.ok) { cuErr.textContent = (r && r.msg) || "保存失败"; return; }
+    brainNow = r.brain;
+    customBox.style.display = "none";
+    refreshMenu();
+    showSub("brain", menuEl.querySelector('[data-sub="settings"]'));
+    say("🧠 换成自定义模型 " + cfg.model + " 了", 3200);
+  }).catch((err) => { cuErr.textContent = "保存失败：" + (err && err.message || err); });
+});
+
 /* 关于 / 版权弹窗 */
 const aboutBox = document.getElementById("about-box"),
       aboutVer = document.getElementById("about-ver"),
@@ -1393,7 +1955,7 @@ document.getElementById("about-close").addEventListener("click", () => {
   aboutBox.style.display = "none";
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") aboutBox.style.display = "none";
+  if (e.key === "Escape") { aboutBox.style.display = "none"; customBox.style.display = "none"; }
 });
 /* 启动时就用主进程的真实版本号校正一次（避免和 package.json 走散） */
 if (window.dafeiyu && window.dafeiyu.appInfo) {
